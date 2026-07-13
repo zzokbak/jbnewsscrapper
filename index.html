@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>쪽박탈출! 주식뉴스 수집기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Serif+KR:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0B0E11;
+    --panel:#12161B;
+    --line:#232A31;
+    --ink:#E8E6DF;
+    --mute:#8B939B;
+    --up:#D64545;      /* 한국 증시 관행: 상승/강조 = 적색 */
+    --down:#3B82C4;    /* 하락/보조 = 청색 */
+    --amber:#E8A93A;   /* 티커 앰버 */
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:'IBM Plex Mono', monospace;
+  }
+  h1,h2,.serif{font-family:'Noto Serif KR', serif;}
+
+  /* ---- 상단 스크롤 티커 (시그니처 요소) : 두 줄, 각각 독립 스크롤 ---- */
+  .tape-wrap{
+    background:#000; border-bottom:1px solid var(--line);
+    overflow:hidden; position:relative;
+  }
+  .tape-row{
+    overflow:hidden; white-space:nowrap; height:30px;
+  }
+  .tape-row + .tape-row{ border-top:1px solid #1a1a1a; }
+  .tape{
+    display:inline-block; padding-left:100%;
+    animation:scroll 56s linear infinite;
+    color:var(--amber); font-size:13px; line-height:30px; letter-spacing:.03em;
+  }
+  .tape span{margin-right:48px;}
+  @keyframes scroll{ from{transform:translateX(0);} to{transform:translateX(-100%);} }
+  @media (prefers-reduced-motion: reduce){ .tape{animation:none; padding-left:16px;} }
+
+  header{
+    padding:28px 24px 18px; border-bottom:1px solid var(--line);
+    display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:12px;
+  }
+  header h1{font-size:26px; margin:0; font-weight:900; letter-spacing:-.01em;}
+  header .sub{color:var(--mute); font-size:12.5px; margin-top:4px;}
+  .status{font-size:12px; color:var(--mute); text-align:right;}
+  .status b{color:var(--amber); font-weight:600;}
+  .dot{display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--up); margin-right:6px; animation:pulse 1.6s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.25;}}
+
+  .controls{
+    padding:14px 24px; border-bottom:1px solid var(--line);
+    display:flex; gap:8px; flex-wrap:wrap; align-items:center; justify-content:flex-end;
+  }
+  .btn{
+    border:1px solid var(--amber); background:transparent; color:var(--amber);
+    padding:7px 14px; border-radius:2px; font-size:12px; cursor:pointer; font-family:inherit;
+  }
+  .btn:hover{background:var(--amber); color:var(--bg);}
+  .diag{color:var(--mute); font-size:11px; margin-right:auto;}
+
+  /* ---- 언론사 탭 ---- */
+  .tabs{
+    max-width:900px; margin:0 auto; padding:16px 24px 0;
+    display:flex; gap:6px; flex-wrap:wrap;
+  }
+  .tab{
+    border:1px solid var(--line); background:var(--panel); color:var(--mute);
+    padding:7px 14px; border-radius:2px 2px 0 0; font-size:12.5px; cursor:pointer;
+    font-family:inherit; user-select:none; white-space:nowrap;
+  }
+  .tab .count{color:var(--mute); font-size:10.5px; margin-left:5px;}
+  .tab.active{color:var(--bg); background:var(--amber); border-color:var(--amber); font-weight:600;}
+  .tab.active .count{color:#00000099;}
+
+  main{max-width:900px; margin:0 auto; padding:0 24px 60px; border-top:1px solid var(--line);}
+  .empty{padding:60px 0; text-align:center; color:var(--mute); font-size:13px;}
+
+  .item{
+    display:grid; grid-template-columns:64px 1fr auto; gap:16px; align-items:start;
+    padding:16px 0; border-bottom:1px solid var(--line);
+  }
+  .item .time{color:var(--mute); font-size:11px; padding-top:3px;}
+  .item a.title{color:var(--ink); text-decoration:none; font-size:15.5px; line-height:1.5; font-weight:500;}
+  .item a.title:hover{color:var(--amber); text-decoration:underline;}
+  .item .src{color:var(--mute); font-size:11.5px; margin-top:5px;}
+  .copy-btn{
+    background:none; border:1px solid var(--line); color:var(--mute); cursor:pointer;
+    width:30px; height:30px; border-radius:2px; display:flex; align-items:center; justify-content:center;
+    padding:0; margin-top:2px;
+  }
+  .copy-btn:hover{border-color:var(--amber); color:var(--amber);}
+  .copy-btn.copied{border-color:var(--up); color:var(--up);}
+  .copy-btn svg{width:15px; height:15px;}
+
+  footer{color:var(--mute); font-size:11px; text-align:center; padding:24px; border-top:1px solid var(--line);}
+</style>
+</head>
+<body>
+
+<div class="tape-wrap">
+  <div class="tape-row"><div class="tape" id="tape1"></div></div>
+  <div class="tape-row"><div class="tape" id="tape2"></div></div>
+</div>
+
+<header>
+  <div>
+    <h1>쪽박탈출! 주식뉴스 수집기</h1>
+    <div class="sub">(주식 관련 뉴스 자동 수집 · 최신순 정렬)</div>
+  </div>
+  <div class="status">
+    <div><span class="dot"></span>자동 갱신 <b>ON</b> · 5분 주기</div>
+    <div id="lastUpdated">마지막 갱신 — 불러오는 중…</div>
+  </div>
+</header>
+
+<div class="controls">
+  <span class="diag" id="diag"></span>
+  <button class="btn" id="refreshBtn">지금 새로고침</button>
+</div>
+
+<div class="tabs" id="tabs"></div>
+
+<main>
+  <div id="list"><div class="empty">뉴스를 불러오는 중입니다…</div></div>
+</main>
+
+<footer>이 페이지는 각 언론사가 공개한 RSS 피드를 표시만 합니다. 기사 본문은 원문 링크에서 확인하세요.</footer>
+
+<script>
+// 관리자만 수정하는 검색 키워드 (화면에는 표시되지 않음, 기사 필터링에만 사용)
+const KEYWORDS = ["삼성","하이닉스","실적발표","리밸런싱","주식","주가","증권","애널리스트","월가","반도체","로봇","안드로이드","임상실험"];
+
+// 언론사별 증권/경제 RSS. 구글 뉴스 검색 RSS는 클라우드 서버 IP를 차단하는 경우가 많아
+// 안정성이 떨어져서, 언론사가 직접 제공하는 RSS로 대체했습니다.
+// 아래 두 곳은 실제로 접속해 데이터가 오는 것까지 확인한 주소입니다.
+// 다른 언론사를 추가하고 싶으면 "언론사명 RSS 주소"로 검색해 최신 주소를 확인한 뒤 이 배열에 추가하세요.
+const SOURCES = [
+  { name: "한국경제",   url: "https://www.hankyung.com/feed/finance" },
+  { name: "파이낸셜뉴스", url: "https://www.fnnews.com/rss/r20/fn_realnews_stock.xml" },
+];
+
+const REFRESH_MS = 5 * 60 * 1000; // 5분
+const MAX_ITEMS = 150;
+
+// 1순위: 본인 소유의 Cloudflare Worker 프록시
+const MY_WORKER = "https://stock-news.millejdj.workers.dev";
+
+// 2순위: 백업용 공개 프록시 (본인 워커가 일시적으로 안 될 때만 시도)
+const PROXIES = [
+  ...(MY_WORKER ? [url => MY_WORKER + "/?url=" + encodeURIComponent(url)] : []),
+  url => "https://api.codetabs.com/v1/proxy/?quest=" + encodeURIComponent(url),
+];
+
+const PROXY_TIMEOUT_MS = 8000; // 프록시 하나당 8초 넘으면 포기하고 다음으로
+
+let allItems = [];        // 키워드 필터를 통과한 전체 기사 {title, link, pubDate, source}
+let renderedItems = [];   // 현재 화면에 그려진 기사 목록 (복사 버튼이 참조)
+let activeTab = "ALL";
+let failedSources = [];
+
+async function fetchWithProxies(targetUrl){
+  let lastError = "";
+  for(const build of PROXIES){
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
+    try{
+      const res = await fetch(build(targetUrl), { signal: controller.signal });
+      clearTimeout(timer);
+      if(res.ok){
+        const text = await res.text();
+        if(text && text.includes("<item")) return text;
+        lastError = "빈 응답";
+      }else{
+        lastError = "HTTP " + res.status;
+      }
+    }catch(e){
+      clearTimeout(timer);
+      lastError = e.name === "AbortError" ? "시간 초과" : e.message;
+    }
+  }
+  throw new Error(lastError || "모든 프록시 실패");
+}
+
+function normalizeTitle(t){
+  return t.replace(/\s*[-–]\s*[^-–]{1,20}$/,"").replace(/\s+/g,"").toLowerCase();
+}
+
+function matchesKeyword(text){
+  if(!text) return false;
+  return KEYWORDS.some(k => text.includes(k));
+}
+
+async function fetchSource(source){
+  const xmlText = await fetchWithProxies(source.url);
+  const doc = new DOMParser().parseFromString(xmlText, "text/xml");
+  const items = Array.from(doc.querySelectorAll("item"));
+  return items.map(it => ({
+    title: it.querySelector("title")?.textContent?.trim() || "(제목 없음)",
+    link: it.querySelector("link")?.textContent?.trim() || "#",
+    pubDate: new Date(it.querySelector("pubDate")?.textContent || Date.now()),
+    description: it.querySelector("description")?.textContent?.trim() || "",
+    source: source.name
+  }));
+}
+
+async function loadAll(){
+  document.getElementById("lastUpdated").textContent = "마지막 갱신 — 불러오는 중…";
+  const results = await Promise.allSettled(SOURCES.map(fetchSource));
+  let merged = [];
+  failedSources = [];
+  results.forEach((r, idx) => {
+    if(r.status === "fulfilled") merged = merged.concat(r.value);
+    else{ failedSources.push(SOURCES[idx].name); console.error(`[${SOURCES[idx].name}] 로딩 실패:`, r.reason); }
+  });
+  document.getElementById("diag").textContent =
+    failedSources.length ? `일부 언론사 로딩 실패: ${failedSources.join(", ")} (F12 → Console 탭에서 상세 원인 확인 가능)` : "";
+
+  // 키워드 필터
+  const filtered = merged.filter(item => matchesKeyword(item.title) || matchesKeyword(item.description));
+
+  // 중복 제거
+  const seen = new Set();
+  const deduped = [];
+  for(const item of filtered.sort((a,b)=>b.pubDate-a.pubDate)){
+    const key = normalizeTitle(item.title);
+    if(seen.has(key) || seen.has(item.link)) continue;
+    seen.add(key); seen.add(item.link);
+    deduped.push(item);
+  }
+
+  allItems = deduped.slice(0, MAX_ITEMS);
+  buildTabs();
+  render();
+  updateTape();
+  const now = new Date();
+  document.getElementById("lastUpdated").textContent =
+    "마지막 갱신 — " + now.toLocaleTimeString("ko-KR", {hour:"2-digit", minute:"2-digit"});
+}
+
+function buildTabs(){
+  const counts = {};
+  allItems.forEach(i => { counts[i.source] = (counts[i.source] || 0) + 1; });
+
+  // 기사 수가 많은(=정보가 많은) 언론사 순으로 정렬
+  const sourceTabs = Object.keys(counts).sort((a,b) => counts[b]-counts[a]);
+
+  if(!sourceTabs.includes(activeTab) && activeTab !== "ALL") activeTab = "ALL";
+
+  const tabsEl = document.getElementById("tabs");
+  const allTab = `<button class="tab ${activeTab==='ALL'?'active':''}" data-tab="ALL">전체<span class="count">${allItems.length}</span></button>`;
+  const rest = sourceTabs.map(name =>
+    `<button class="tab ${activeTab===name?'active':''}" data-tab="${name}">${name}<span class="count">${counts[name]}</span></button>`
+  ).join("");
+  tabsEl.innerHTML = allTab + rest;
+
+  tabsEl.querySelectorAll(".tab").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      activeTab = btn.dataset.tab;
+      buildTabs();
+      render();
+    });
+  });
+}
+
+function render(){
+  const list = document.getElementById("list");
+  renderedItems = activeTab === "ALL" ? allItems : allItems.filter(i => i.source === activeTab);
+
+  if(renderedItems.length === 0){
+    list.innerHTML = '<div class="empty">뉴스를 불러오지 못했습니다. 상단 진단 메시지를 확인하거나 잠시 후 새로고침 해보세요.</div>';
+    return;
+  }
+
+  const copyIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+  const checkIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+  list.innerHTML = renderedItems.map((i, idx) => `
+    <div class="item">
+      <div class="time">${i.pubDate.toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"})}<br>${i.pubDate.toLocaleDateString("ko-KR",{month:"2-digit",day:"2-digit"})}</div>
+      <div>
+        <a class="title" href="${i.link}" target="_blank" rel="noopener noreferrer">${i.title}</a>
+        <div class="src">${i.source}</div>
+      </div>
+      <button class="copy-btn" data-idx="${idx}" title="링크 복사">${copyIcon}</button>
+    </div>
+  `).join("");
+
+  list.querySelectorAll(".copy-btn").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      const item = renderedItems[Number(btn.dataset.idx)];
+      try{
+        await navigator.clipboard.writeText(item.link);
+      }catch(e){
+        // 클립보드 API를 못 쓰는 환경(예: file:// 일부 브라우저) 대비 폴백
+        const ta = document.createElement("textarea");
+        ta.value = item.link; document.body.appendChild(ta);
+        ta.select(); document.execCommand("copy"); document.body.removeChild(ta);
+      }
+      btn.innerHTML = checkIcon;
+      btn.classList.add("copied");
+      setTimeout(()=>{ btn.innerHTML = copyIcon; btn.classList.remove("copied"); }, 1200);
+    });
+  });
+}
+
+function updateTape(){
+  const tape1 = document.getElementById("tape1");
+  const tape2 = document.getElementById("tape2");
+  const top = allItems.slice(0, 16);
+  if(top.length === 0) return;
+  const row1 = top.filter((_, idx) => idx % 2 === 0);
+  const row2 = top.filter((_, idx) => idx % 2 === 1);
+  tape1.innerHTML = row1.map(i => `<span>● ${i.title}</span>`).join("");
+  tape2.innerHTML = row2.map(i => `<span>● ${i.title}</span>`).join("");
+}
+
+document.getElementById("refreshBtn").addEventListener("click", loadAll);
+
+loadAll();
+setInterval(loadAll, REFRESH_MS);
+</script>
+
+</body>
+</html>
