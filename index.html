@@ -483,7 +483,7 @@ async function loadAll(){
     }
   });
   document.getElementById("diag").textContent =
-    failedSources.length ? `일부 언론사 로딩 실패: ${failedSources.join(", ")} (F12 → Console 탭에서 상세 원인 확인 가능)` : "";
+    failedSources.length ? `일부 언론사 로딩 실패: ${failedSources.join(", ")}` : "";
 
   // 국내 소스는 한글 키워드로 필터(포털 검색은 이미 키워드로 검색했으니 그대로 통과), 해외 소스는 fetchSourceEn 단계에서 이미 필터됨
   const filteredKo = mergedKo.filter(item => matchesAnyKeyword(item));
