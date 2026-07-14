@@ -44,11 +44,12 @@
 
   header{
     padding:28px 24px 18px; border-bottom:1px solid var(--line);
-    display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:12px;
+    display:flex; flex-direction:column; gap:10px;
   }
+  header .title-block{ width:100%; text-align:center; }
   header h1{font-size:26px; margin:0; font-weight:900; letter-spacing:-.01em;}
   header .sub{color:var(--mute); font-size:12.5px; margin-top:4px;}
-  .status{font-size:12px; color:var(--mute); text-align:right;}
+  .status{width:100%; font-size:12px; color:var(--mute); text-align:right;}
   .status b{color:var(--amber); font-weight:600;}
   .dot{display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--up); margin-right:6px; animation:pulse 1.6s ease-in-out infinite;}
   @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.25;}}
@@ -134,12 +135,12 @@
 </div>
 
 <header>
-  <div>
+  <div class="title-block">
     <h1>쪽박탈출! 주식뉴스 수집기</h1>
     <div class="sub">(주식 관련 뉴스 자동 수집 · 최신순 정렬)</div>
   </div>
   <div class="status">
-    <div><span class="dot"></span>자동 갱신 <b>ON</b> · 5분 주기</div>
+    <div><span class="dot"></span>자동 갱신 <b>ON</b> · 10분 주기</div>
     <div id="lastUpdated">마지막 갱신 — 불러오는 중…</div>
   </div>
 </header>
@@ -161,7 +162,16 @@
 
 <script>
 // 관리자만 수정하는 검색 키워드 (화면에는 표시되지 않음, 기사 필터링에만 사용)
-const KEYWORDS = ["삼성","하이닉스","실적발표","리밸런싱","주식","주가","증권","애널리스트","월가","반도체","로봇","안드로이드","임상실험"];
+// 단독으로만 있어도 수집하는 키워드 (삼성·하이닉스는 이름만 나와도 걸리는 경우가 너무 많아서 여기서 뺐음)
+const KEYWORDS = ["실적발표","리밸런싱","주식","주가","증권","애널리스트","월가","반도체","로봇","안드로이드","임상실험","메모리","호르무즈"];
+
+// 두 단어가 "같이" 나올 때만 수집하는 조합 (삼성/하이닉스는 이름만으론 노이즈가 많아 이렇게 좁혀서 씀)
+const KEYWORD_AND_GROUPS = [
+  ["삼성","계약"],
+  ["하이닉스","계약"],
+  ["삼성","주가"],
+  ["하이닉스","주가"],
+];
 
 // 언론사별 증권/경제 RSS. 구글 뉴스 검색 RSS는 클라우드 서버 IP를 차단하는 경우가 많아
 // 안정성이 떨어져서, 언론사가 직접 제공하는 RSS로 대체했습니다.
@@ -173,23 +183,26 @@ const SOURCES = [
   { name: "뉴시스",     url: "https://www.newsis.com/RSS/sokbo.xml" }, // 속보 전용 피드 (티커 소스로도 사용)
 ];
 
-// 해외 소스: 로이터는 2020년경 공개 RSS를 완전히 폐지해서 제외했습니다(공식 피드 없음).
+// 해외 소스: 로이터는 2020년경 공개 RSS를 완전히 폐지해서 제외했습니다(공식 피드 없음, 지금 나오는 건 전부 비공식 스크래핑 서비스라 신뢰하기 어려움).
 // 블룸버그·폭스비즈니스는 실제 접속해 데이터가 오는 것을 확인한 주소입니다.
+// 폭스비즈니스는 markets(시황) 피드 하나만으로는 키워드 매칭이 잘 안 걸려서 economy(경제) 피드도 같이 추가했습니다.
 const SOURCES_EN = [
   { name: "Bloomberg",     url: "https://feeds.bloomberg.com/markets/news.rss" },
   { name: "Fox Business",  url: "https://moxie.foxbusiness.com/google-publisher/markets.xml" },
+  { name: "Fox Business",  url: "https://moxie.foxbusiness.com/google-publisher/economy.xml" },
 ];
 
 // 한글 키워드 → 영어 키워드 매핑 (해외 소스 필터링용)
-const KEYWORDS_EN = ["Samsung","SK Hynix","Hynix","earnings","rebalancing","stock","shares","securities","analyst","Wall Street","semiconductor","chip","robot","Android","clinical trial"];
+const KEYWORDS_EN = ["Samsung","SK Hynix","Hynix","earnings","rebalancing","stock","shares","securities","analyst","Wall Street","semiconductor","chip","robot","Android","clinical trial","memory chip","Hormuz"];
 
 // 네이버·다음 포털 검색: 구글 뉴스와 달리 무료 공개 RSS가 없어서, 각 포털의 공식 오픈 API를 씁니다.
 // API 키(Client ID/Secret)는 브라우저에 노출하면 안 되므로 Worker 안에서만 사용합니다.
 // 아래 스위치를 true로 바꾸면 시도합니다 — 단, Worker에 먼저 키를 등록해야 동작합니다 (안내 참고).
 const USE_PORTAL_SEARCH = true;
 
-const REFRESH_MS = 5 * 60 * 1000; // 5분
+const REFRESH_MS = 10 * 60 * 1000; // 10분
 const MAX_ITEMS = 150;
+const PER_SOURCE_MAX = 10; // 탭(언론사)마다 최대 10개까지만
 
 // 1순위: 본인 소유의 Cloudflare Worker 프록시
 const MY_WORKER = "https://stock-news.millejdj.workers.dev";
@@ -239,10 +252,26 @@ function matchesKeyword(text){
   return KEYWORDS.some(k => text.includes(k));
 }
 
+// 제목+본문을 합쳐서 봐야 "삼성"은 제목에, "계약"은 본문에 있는 경우도 잡을 수 있음
+function matchesAnyKeyword(item){
+  const combined = (item.title || "") + " " + (item.description || "");
+  if(KEYWORDS.some(k => combined.includes(k))) return true;
+  return KEYWORD_AND_GROUPS.some(group => group.every(k => combined.includes(k)));
+}
+
 function matchesKeywordEn(text){
   if(!text) return false;
   const lower = text.toLowerCase();
   return KEYWORDS_EN.some(k => lower.includes(k.toLowerCase()));
+}
+
+// 부고·인사·동정란 기사는 회사/지역 이름이 우연히 겹쳐서 걸리는 경우가 많아 제외.
+// 단, 대통령의 사망/서거 소식처럼 실제로 중요한 뉴스는 예외로 통과시킨다.
+function isObituaryNoise(title){
+  if(!title) return false;
+  const isPresidentDeath = /대통령/.test(title) && /(사망|서거|타계)/.test(title);
+  if(isPresidentDeath) return false;
+  return /부고|인사종합|동정|모친상|부친상|별세|빈소|발인/.test(title);
 }
 
 function stripHtml(html){
@@ -351,20 +380,26 @@ async function fetchDaumKeyword(keyword){
 
 function delay(ms){ return new Promise(res => setTimeout(res, ms)); }
 
+// 네이버·다음은 검색 API라 "삼성 계약"처럼 두 단어를 붙여서 검색어 자체로 보낼 수 있음
+const PORTAL_QUERIES = [
+  ...KEYWORDS,
+  ...KEYWORD_AND_GROUPS.map(group => group.join(" ")), // ["삼성","계약"] → "삼성 계약"
+];
+
 async function fetchPortal(fetchFn, label){
   let merged = [];
   let failCount = 0;
-  for(let i = 0; i < KEYWORDS.length; i++){
+  for(let i = 0; i < PORTAL_QUERIES.length; i++){
     try{
-      const items = await fetchFn(KEYWORDS[i]);
+      const items = await fetchFn(PORTAL_QUERIES[i]);
       merged = merged.concat(items);
     }catch(e){
       failCount++;
-      console.error(`[${label} · ${KEYWORDS[i]}] 실패:`, e);
+      console.error(`[${label} · ${PORTAL_QUERIES[i]}] 실패:`, e);
     }
-    if(i < KEYWORDS.length - 1) await delay(250); // 한꺼번에 몰아서 보내지 않도록 약간의 간격을 둠 (버스트 차단 방지)
+    if(i < PORTAL_QUERIES.length - 1) await delay(250); // 한꺼번에 몰아서 보내지 않도록 약간의 간격을 둠 (버스트 차단 방지)
   }
-  if(failCount === KEYWORDS.length) throw new Error(`${label} 전체 실패`); // 전부 실패하면 소스 자체가 죽은 것으로 처리
+  if(failCount === PORTAL_QUERIES.length) throw new Error(`${label} 전체 실패`); // 전부 실패하면 소스 자체가 죽은 것으로 처리
   return merged;
 }
 
@@ -401,10 +436,14 @@ async function loadAll(){
 
   // 국내 소스는 한글 키워드로 필터(포털 검색은 이미 키워드로 검색했으니 그대로 통과), 해외 소스는 fetchSourceEn 단계에서 이미 필터됨
   const filteredKo = mergedKo.filter(item =>
-    item.source === "네이버" || item.source === "다음" || matchesKeyword(item.title) || matchesKeyword(item.description)
+    item.source === "네이버" || item.source === "다음" || matchesAnyKeyword(item)
   );
-  const filtered = filteredKo.concat(mergedEn);
-  filtered.forEach(item => { if(item.title.includes("속보")) item.isBreaking = true; });
+  const filtered = filteredKo.concat(mergedEn).filter(item => !isObituaryNoise(item.title));
+  filtered.forEach(item => {
+    // 한글 "속보" 또는 영문 원제목의 "BREAKING" 둘 다 속보로 인정
+    const enBreaking = item.lang === "en" && item.titleEn && /\bbreaking\b/i.test(item.titleEn);
+    if(item.title.includes("속보") || enBreaking) item.isBreaking = true;
+  });
 
   // 중복 제거
   const seen = new Set();
@@ -416,7 +455,17 @@ async function loadAll(){
     deduped.push(item);
   }
 
-  allItems = deduped.slice(0, MAX_ITEMS);
+  // 탭(언론사)마다 최대 PER_SOURCE_MAX개까지만 (네이버가 압도적으로 많이 잡히는 것 방지)
+  const sourceCounts = {};
+  const capped = [];
+  for(const item of deduped){
+    const c = sourceCounts[item.source] || 0;
+    if(c >= PER_SOURCE_MAX) continue;
+    sourceCounts[item.source] = c + 1;
+    capped.push(item);
+  }
+
+  allItems = capped.slice(0, MAX_ITEMS);
   buildTabs();
   render();
   updateTape();
@@ -530,19 +579,31 @@ function render(){
   });
 }
 
+function timeAgo(date){
+  const diffMin = Math.floor((Date.now() - date.getTime()) / 60000);
+  if(diffMin < 1) return "방금 전";
+  if(diffMin < 60) return diffMin + "분 전";
+  const diffHour = Math.floor(diffMin / 60);
+  if(diffHour < 24) return diffHour + "시간 전";
+  return Math.floor(diffHour / 24) + "일 전";
+}
+
 function updateTape(){
   const tape1 = document.getElementById("tape1");
   const tape2 = document.getElementById("tape2");
+
+  // 1번째 줄: "오늘 주요뉴스" 자리 — 세이브티커 사이트는 자바스크립트로 내용을 채우는 방식이라
+  // 직접 가져올 수 없어서, 확보된 해외 소스 중 블룸버그 최신 2건으로 대체
+  const topForeign = allItems.filter(i => i.source === "Bloomberg").slice(0, 2);
+  tape1.innerHTML = topForeign.length
+    ? topForeign.map(i => `<span>● ${i.title} · ${timeAgo(i.pubDate)}</span>`).join("")
+    : `<span>오늘 주요뉴스를 불러오는 중입니다</span>`;
+
+  // 2번째 줄: 속보(한글 "속보" 또는 영문 "BREAKING")만
   const breaking = allItems.filter(i => i.isBreaking).slice(0, 16);
-  if(breaking.length === 0){
-    tape1.innerHTML = `<span>현재 조건에 맞는 속보가 없습니다</span>`;
-    tape2.innerHTML = "";
-    return;
-  }
-  const row1 = breaking.filter((_, idx) => idx % 2 === 0);
-  const row2 = breaking.filter((_, idx) => idx % 2 === 1);
-  tape1.innerHTML = row1.map(i => `<span>● ${i.title}</span>`).join("");
-  tape2.innerHTML = row2.map(i => `<span>● ${i.title}</span>`).join("");
+  tape2.innerHTML = breaking.length
+    ? breaking.map(i => `<span>● ${i.title}</span>`).join("")
+    : `<span>현재 조건에 맞는 속보가 없습니다</span>`;
 }
 
 document.getElementById("refreshBtn").addEventListener("click", loadAll);
