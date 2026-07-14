@@ -24,19 +24,19 @@
   }
   h1,h2,.serif{font-family:'Noto Serif KR', serif;}
 
-  /* ---- 상단 스크롤 티커 (시그니처 요소) : 두 줄, 각각 독립 스크롤 ---- */
+  /* ---- 상단 스크롤 티커 (시그니처 요소) : 두 줄, 각각 독립 스크롤, 본문과 동일한 배경 ---- */
   .tape-wrap{
-    background:#000; border-bottom:1px solid var(--line);
+    background:var(--bg); border-bottom:1px solid var(--line);
     overflow:hidden; position:relative;
   }
   .tape-row{
     overflow:hidden; white-space:nowrap; height:30px;
   }
-  .tape-row + .tape-row{ border-top:1px solid #1a1a1a; }
+  .tape-row + .tape-row{ border-top:1px solid var(--line); }
   .tape{
     display:inline-block; padding-left:100%;
     animation:scroll 56s linear infinite;
-    color:var(--amber); font-size:13px; line-height:30px; letter-spacing:.03em;
+    color:var(--amber); font-weight:600; font-size:13px; line-height:30px; letter-spacing:.03em;
   }
   .tape span{margin-right:48px;}
   @keyframes scroll{ from{transform:translateX(0);} to{transform:translateX(-100%);} }
@@ -98,6 +98,31 @@
   .copy-btn.copied{border-color:var(--up); color:var(--up);}
   .copy-btn svg{width:15px; height:15px;}
 
+  /* 제목에 '속보'가 포함된 기사는 연분홍 배경으로 강조 */
+  .item.breaking{
+    background:#FFD9EA; margin:0 -14px; padding:16px 14px; border-radius:4px; border-bottom-color:#FFC2DE;
+  }
+  .item.breaking .time{ color:#8A3B60; }
+  .item.breaking a.title{ color:#4A0E2C; }
+  .item.breaking a.title:hover{ color:#B0125F; }
+  .item.breaking .src{ color:#8A3B60; }
+  .item.breaking .copy-btn{ border-color:#B0125F55; color:#8A3B60; }
+  .item.breaking .copy-btn:hover{ border-color:#B0125F; color:#B0125F; }
+
+  /* 기사 제목에 마우스를 올리면 나타나는 큰 미리보기 창 */
+  #previewPanel{
+    position:fixed; right:24px; bottom:24px; width:min(440px, 90vw); max-height:60vh;
+    background:var(--panel); border:1px solid var(--amber); border-radius:6px;
+    box-shadow:0 12px 40px rgba(0,0,0,.5); padding:18px 20px; overflow-y:auto;
+    opacity:0; pointer-events:none; transform:translateY(10px);
+    transition:opacity .15s ease, transform .15s ease; z-index:999;
+  }
+  #previewPanel.show{ opacity:1; transform:translateY(0); }
+  #previewPanel .pv-src{ color:var(--amber); font-size:11px; font-weight:600; margin-bottom:6px; }
+  #previewPanel .pv-title{ font-family:'Noto Serif KR', serif; font-size:16px; font-weight:700; margin-bottom:10px; line-height:1.4; }
+  #previewPanel .pv-body{ color:var(--ink); font-size:13px; line-height:1.7; white-space:pre-line; }
+  #previewPanel .pv-loading{ color:var(--mute); font-size:12.5px; }
+
   footer{color:var(--mute); font-size:11px; text-align:center; padding:24px; border-top:1px solid var(--line);}
 </style>
 </head>
@@ -132,6 +157,8 @@
 
 <footer>이 페이지는 각 언론사가 공개한 RSS 피드를 표시만 합니다. 기사 본문은 원문 링크에서 확인하세요.</footer>
 
+<div id="previewPanel"></div>
+
 <script>
 // 관리자만 수정하는 검색 키워드 (화면에는 표시되지 않음, 기사 필터링에만 사용)
 const KEYWORDS = ["삼성","하이닉스","실적발표","리밸런싱","주식","주가","증권","애널리스트","월가","반도체","로봇","안드로이드","임상실험"];
@@ -143,7 +170,23 @@ const KEYWORDS = ["삼성","하이닉스","실적발표","리밸런싱","주식"
 const SOURCES = [
   { name: "한국경제",   url: "https://www.hankyung.com/feed/finance" },
   { name: "파이낸셜뉴스", url: "https://www.fnnews.com/rss/r20/fn_realnews_stock.xml" },
+  { name: "뉴시스",     url: "https://www.newsis.com/RSS/sokbo.xml" }, // 속보 전용 피드 (티커 소스로도 사용)
 ];
+
+// 해외 소스: 로이터는 2020년경 공개 RSS를 완전히 폐지해서 제외했습니다(공식 피드 없음).
+// 블룸버그·폭스비즈니스는 실제 접속해 데이터가 오는 것을 확인한 주소입니다.
+const SOURCES_EN = [
+  { name: "Bloomberg",     url: "https://feeds.bloomberg.com/markets/news.rss" },
+  { name: "Fox Business",  url: "https://moxie.foxbusiness.com/google-publisher/markets.xml" },
+];
+
+// 한글 키워드 → 영어 키워드 매핑 (해외 소스 필터링용)
+const KEYWORDS_EN = ["Samsung","SK Hynix","Hynix","earnings","rebalancing","stock","shares","securities","analyst","Wall Street","semiconductor","chip","robot","Android","clinical trial"];
+
+// 네이버·다음 포털 검색: 구글 뉴스와 달리 무료 공개 RSS가 없어서, 각 포털의 공식 오픈 API를 씁니다.
+// API 키(Client ID/Secret)는 브라우저에 노출하면 안 되므로 Worker 안에서만 사용합니다.
+// 아래 스위치를 true로 바꾸면 시도합니다 — 단, Worker에 먼저 키를 등록해야 동작합니다 (안내 참고).
+const USE_PORTAL_SEARCH = true;
 
 const REFRESH_MS = 5 * 60 * 1000; // 5분
 const MAX_ITEMS = 150;
@@ -196,6 +239,33 @@ function matchesKeyword(text){
   return KEYWORDS.some(k => text.includes(k));
 }
 
+function matchesKeywordEn(text){
+  if(!text) return false;
+  const lower = text.toLowerCase();
+  return KEYWORDS_EN.some(k => lower.includes(k.toLowerCase()));
+}
+
+function stripHtml(html){
+  if(!html) return "";
+  const tmp = document.createElement("div");
+  tmp.innerHTML = html;
+  return (tmp.textContent || tmp.innerText || "").replace(/\s+/g," ").trim();
+}
+
+const translateCache = {}; // 같은 문장을 여러 번 번역 요청하지 않도록 캐시
+async function translateToKo(text){
+  if(!text) return "";
+  if(translateCache[text]) return translateCache[text];
+  const chunk = text.slice(0, 480); // MyMemory 1회 요청 500byte 제한 대비
+  try{
+    const res = await fetch("https://api.mymemory.translated.net/get?q=" + encodeURIComponent(chunk) + "&langpair=en|ko");
+    const data = await res.json();
+    const translated = data?.responseData?.translatedText;
+    if(translated){ translateCache[text] = translated; return translated; }
+  }catch(e){ /* 번역 실패 시 원문으로 대체 */ }
+  return text;
+}
+
 async function fetchSource(source){
   const xmlText = await fetchWithProxies(source.url);
   const doc = new DOMParser().parseFromString(xmlText, "text/xml");
@@ -204,25 +274,137 @@ async function fetchSource(source){
     title: it.querySelector("title")?.textContent?.trim() || "(제목 없음)",
     link: it.querySelector("link")?.textContent?.trim() || "#",
     pubDate: new Date(it.querySelector("pubDate")?.textContent || Date.now()),
-    description: it.querySelector("description")?.textContent?.trim() || "",
-    source: source.name
+    description: stripHtml(it.querySelector("description")?.textContent?.trim() || ""),
+    source: source.name,
+    lang: "ko"
   }));
+}
+
+async function fetchSourceEn(source){
+  const xmlText = await fetchWithProxies(source.url);
+  const doc = new DOMParser().parseFromString(xmlText, "text/xml");
+  const items = Array.from(doc.querySelectorAll("item"));
+  const matched = items
+    .map(it => ({
+      titleEn: it.querySelector("title")?.textContent?.trim() || "",
+      link: it.querySelector("link")?.textContent?.trim() || "#",
+      pubDate: new Date(it.querySelector("pubDate")?.textContent || Date.now()),
+      descriptionEn: stripHtml(it.querySelector("description")?.textContent?.trim() || ""),
+      source: source.name,
+      lang: "en"
+    }))
+    .filter(it => matchesKeywordEn(it.titleEn) || matchesKeywordEn(it.descriptionEn));
+
+  // 제목만 미리 번역 (본문은 마우스를 올렸을 때 그때그때 번역)
+  await Promise.all(matched.map(async it => {
+    it.title = await translateToKo(it.titleEn);
+    it.description = it.descriptionEn; // 원문 유지, 호버 시 번역
+  }));
+  return matched;
+}
+
+// 네이버 뉴스 검색 (Worker가 /?naver_query=키워드 로 프록시)
+async function fetchNaverKeyword(keyword){
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
+  let res;
+  try{
+    res = await fetch(MY_WORKER + "/?naver_query=" + encodeURIComponent(keyword), { signal: controller.signal });
+  }finally{ clearTimeout(timer); }
+  if(!res.ok) throw new Error("HTTP " + res.status);
+  const data = await res.json();
+  if(!Array.isArray(data.items)){
+    throw new Error("네이버 응답 형식 이상: " + JSON.stringify(data).slice(0,150));
+  }
+  return data.items.map(it => ({
+    title: stripHtml(it.title),
+    link: it.originallink || it.link || "#",
+    pubDate: new Date(it.pubDate || Date.now()),
+    description: stripHtml(it.description || ""),
+    source: "네이버",
+    lang: "ko"
+  }));
+}
+
+// 다음(카카오) 웹 문서 검색 — 카카오는 뉴스 전용 API가 없어 웹 문서 검색으로 대체 (Worker가 /?daum_query=키워드 로 프록시)
+async function fetchDaumKeyword(keyword){
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
+  let res;
+  try{
+    res = await fetch(MY_WORKER + "/?daum_query=" + encodeURIComponent(keyword), { signal: controller.signal });
+  }finally{ clearTimeout(timer); }
+  if(!res.ok) throw new Error("HTTP " + res.status);
+  const data = await res.json();
+  if(!Array.isArray(data.documents)){
+    throw new Error("다음 응답 형식 이상: " + JSON.stringify(data).slice(0,150));
+  }
+  return data.documents.map(it => ({
+    title: stripHtml(it.title),
+    link: it.url || "#",
+    pubDate: new Date(it.datetime || Date.now()),
+    description: stripHtml(it.contents || ""),
+    source: "다음",
+    lang: "ko"
+  }));
+}
+
+function delay(ms){ return new Promise(res => setTimeout(res, ms)); }
+
+async function fetchPortal(fetchFn, label){
+  let merged = [];
+  let failCount = 0;
+  for(let i = 0; i < KEYWORDS.length; i++){
+    try{
+      const items = await fetchFn(KEYWORDS[i]);
+      merged = merged.concat(items);
+    }catch(e){
+      failCount++;
+      console.error(`[${label} · ${KEYWORDS[i]}] 실패:`, e);
+    }
+    if(i < KEYWORDS.length - 1) await delay(250); // 한꺼번에 몰아서 보내지 않도록 약간의 간격을 둠 (버스트 차단 방지)
+  }
+  if(failCount === KEYWORDS.length) throw new Error(`${label} 전체 실패`); // 전부 실패하면 소스 자체가 죽은 것으로 처리
+  return merged;
 }
 
 async function loadAll(){
   document.getElementById("lastUpdated").textContent = "마지막 갱신 — 불러오는 중…";
-  const results = await Promise.allSettled(SOURCES.map(fetchSource));
-  let merged = [];
+  const allSources = [...SOURCES.map(s => ({...s, lang:"ko"})), ...SOURCES_EN.map(s => ({...s, lang:"en"}))];
+  const fetchTasks = allSources.map(s => s.lang === "en" ? fetchSourceEn(s) : fetchSource(s));
+
+  // 네이버·다음 포털 검색 (Worker에 API 키가 등록돼 있을 때만 시도)
+  const portalNames = [];
+  if(USE_PORTAL_SEARCH && MY_WORKER){
+    fetchTasks.push(fetchPortal(fetchNaverKeyword, "네이버")); portalNames.push("네이버");
+    fetchTasks.push(fetchPortal(fetchDaumKeyword, "다음"));   portalNames.push("다음");
+  }
+
+  const results = await Promise.allSettled(fetchTasks);
+  let mergedKo = [];
+  let mergedEn = [];
   failedSources = [];
   results.forEach((r, idx) => {
-    if(r.status === "fulfilled") merged = merged.concat(r.value);
-    else{ failedSources.push(SOURCES[idx].name); console.error(`[${SOURCES[idx].name}] 로딩 실패:`, r.reason); }
+    const isPortal = idx >= allSources.length;
+    const name = isPortal ? portalNames[idx - allSources.length] : allSources[idx].name;
+    const lang = isPortal ? "ko" : allSources[idx].lang;
+    if(r.status === "fulfilled"){
+      if(lang === "en") mergedEn = mergedEn.concat(r.value);
+      else mergedKo = mergedKo.concat(r.value);
+    }else{
+      failedSources.push(name);
+      console.error(`[${name}] 로딩 실패:`, r.reason);
+    }
   });
   document.getElementById("diag").textContent =
     failedSources.length ? `일부 언론사 로딩 실패: ${failedSources.join(", ")} (F12 → Console 탭에서 상세 원인 확인 가능)` : "";
 
-  // 키워드 필터
-  const filtered = merged.filter(item => matchesKeyword(item.title) || matchesKeyword(item.description));
+  // 국내 소스는 한글 키워드로 필터(포털 검색은 이미 키워드로 검색했으니 그대로 통과), 해외 소스는 fetchSourceEn 단계에서 이미 필터됨
+  const filteredKo = mergedKo.filter(item =>
+    item.source === "네이버" || item.source === "다음" || matchesKeyword(item.title) || matchesKeyword(item.description)
+  );
+  const filtered = filteredKo.concat(mergedEn);
+  filtered.forEach(item => { if(item.title.includes("속보")) item.isBreaking = true; });
 
   // 중복 제거
   const seen = new Set();
@@ -281,10 +463,10 @@ function render(){
   const checkIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
   list.innerHTML = renderedItems.map((i, idx) => `
-    <div class="item">
+    <div class="item ${i.isBreaking ? 'breaking' : ''}">
       <div class="time">${i.pubDate.toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"})}<br>${i.pubDate.toLocaleDateString("ko-KR",{month:"2-digit",day:"2-digit"})}</div>
       <div>
-        <a class="title" href="${i.link}" target="_blank" rel="noopener noreferrer">${i.title}</a>
+        <a class="title" href="${i.link}" target="_blank" rel="noopener noreferrer" data-idx="${idx}">${i.title}</a>
         <div class="src">${i.source}</div>
       </div>
       <button class="copy-btn" data-idx="${idx}" title="링크 복사">${copyIcon}</button>
@@ -307,15 +489,58 @@ function render(){
       setTimeout(()=>{ btn.innerHTML = copyIcon; btn.classList.remove("copied"); }, 1200);
     });
   });
+
+  const preview = document.getElementById("previewPanel");
+  let hoverToken = 0; // 빠르게 여러 기사를 오갈 때 오래된 번역 응답이 늦게 도착해 덮어쓰는 것 방지
+
+  list.querySelectorAll("a.title").forEach(el=>{
+    el.addEventListener("mouseenter", async ()=>{
+      const myToken = ++hoverToken;
+      const item = renderedItems[Number(el.dataset.idx)];
+      if(!item) return;
+
+      const renderPanel = (bodyHtml) => {
+        if(myToken !== hoverToken) return; // 이미 다른 기사로 넘어간 경우 무시
+        preview.innerHTML = `
+          <div class="pv-src">${item.source}${item.lang === "en" ? " · 번역됨" : ""}</div>
+          <div class="pv-title">${item.title}</div>
+          <div class="pv-body">${bodyHtml}</div>
+        `;
+        preview.classList.add("show");
+      };
+
+      if(!item.description){
+        renderPanel("본문 미리보기를 제공하지 않는 기사입니다. 링크를 눌러 원문을 확인하세요.");
+        return;
+      }
+
+      if(item.lang === "en"){
+        renderPanel(`<span class="pv-loading">번역 중…</span>`);
+        const translated = await translateToKo(item.description);
+        renderPanel(translated);
+      }else{
+        renderPanel(item.description);
+      }
+    });
+
+    el.addEventListener("mouseleave", ()=>{
+      hoverToken++; // 진행 중이던 번역 결과 무시
+      preview.classList.remove("show");
+    });
+  });
 }
 
 function updateTape(){
   const tape1 = document.getElementById("tape1");
   const tape2 = document.getElementById("tape2");
-  const top = allItems.slice(0, 16);
-  if(top.length === 0) return;
-  const row1 = top.filter((_, idx) => idx % 2 === 0);
-  const row2 = top.filter((_, idx) => idx % 2 === 1);
+  const breaking = allItems.filter(i => i.isBreaking).slice(0, 16);
+  if(breaking.length === 0){
+    tape1.innerHTML = `<span>현재 조건에 맞는 속보가 없습니다</span>`;
+    tape2.innerHTML = "";
+    return;
+  }
+  const row1 = breaking.filter((_, idx) => idx % 2 === 0);
+  const row2 = breaking.filter((_, idx) => idx % 2 === 1);
   tape1.innerHTML = row1.map(i => `<span>● ${i.title}</span>`).join("");
   tape2.innerHTML = row2.map(i => `<span>● ${i.title}</span>`).join("");
 }
