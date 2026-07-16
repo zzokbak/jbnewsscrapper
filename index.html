@@ -768,6 +768,15 @@ function renderMarketSymbol(m, q){
   </span>`;
 }
 
+function renderPlaceholders(){
+  MARKET_ROWS.forEach(row => {
+    const rowEl = document.getElementById(row.elId);
+    rowEl.innerHTML = row.symbols.map((m, i) =>
+      `<span id="mkt-${row.elId}-${i}">${renderMarketSymbol(m, null)}</span>`
+    ).join("");
+  });
+}
+
 async function updateMarketTicker(){
   const row = MARKET_ROWS[marketRowIndex];
   const rowEl = document.getElementById(row.elId);
@@ -794,6 +803,7 @@ async function updateMarketTicker(){
   marketRowIndex = (marketRowIndex + 1) % MARKET_ROWS.length;
 }
 
+renderPlaceholders();
 updateMarketTicker();
 setInterval(updateMarketTicker, MARKET_REFRESH_MS);
 
