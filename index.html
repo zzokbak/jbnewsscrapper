@@ -355,6 +355,7 @@ const NOISE_AND_GROUPS = [
   ["계좌","개설"],
   ["개설","방법"],
   ["거래","방법"],
+  ["계좌","가입"],
 ];
 
 function isExcludedNoise(item){
@@ -699,20 +700,23 @@ function timeAgo(date){
 function updateTape(){
   // 속보(한글 "속보" 또는 영문 "BREAKING")만 — 3번째 줄
   const tape3 = document.getElementById("tape3");
-  const breaking = allItems.filter(i => i.isBreaking).slice(0, 16);
+  let breaking = allItems.filter(i => i.isBreaking).slice(0, 16);
+  if(breaking.length === 0) breaking = allItems.slice(0, 2); // 속보가 하나도 없으면 최신 기사 2개로 대체
   tape3.innerHTML = breaking.length
     ? breaking.map(i => `<span>● ${i.title}</span>`).join("")
-    : `<span>현재 조건에 맞는 속보가 없습니다</span>`;
+    : `<span>표시할 뉴스가 없습니다</span>`;
 }
 
-// ---- 1·2번째 줄: 실시간 시장 지표 (뉴스와 별도로 더 자주 갱신) ----
-// Stooq는 클라우드 서버발 요청을 막아서(404) Twelve Data로 교체.
-// 무료 요금제가 "분당 8건"이라, 줄 하나(8개)씩 1분마다 번갈아 요청함 (전체는 2분에 한 바퀴).
-// 확실한 것: 코스피/코스닥/나스닥/S&P/환율/WTI/브렌트유/금/비트코인
-// 덜 확실한 것(Twelve Data 무료 플랜에서 지원 안 될 수 있음, 안 뜨면 알려주세요): 나스닥선물/반도체지수/미국채10Y/은/구리/알루미늄/천연가스
+// ---- 2번째 줄(원자재)은 소스를 분산: 금·은·구리 = gold-api.com(무료,무제한), 유가 = Twelve Data 전용 30초 루프,
+// 비트코인 = CoinGecko, 나머지(알루미늄·천연가스)만 Twelve Data 일반 로테이션.
+// 환율은 Frankfurter.app(무료,키불필요,무제한) 1순위, 실패시 Twelve Data.
+// 각 소스가 실패하면 Twelve Data로 대체(fallback)합니다.
+// 1번째 줄의 나머지(지수·채권)는 조사해봤지만 gold-api.com 같은 "무료+무제한" 대안을 못 찾아서 Twelve Data 그대로 사용합니다.
+// 확실한 것: 코스피/코스닥/나스닥/S&P/환율/WTI/브렌트유/금/은/구리/비트코인
+// 덜 확실한 것(Twelve Data 무료 플랜에서 지원 안 될 수 있음, 안 뜨면 알려주세요): 나스닥선물/반도체지수/미국채10Y/알루미늄/천연가스
 const MARKET_ROWS = [
   {
-    elId: "marketRow1", // 1번째 줄: 지수·환율·금리
+    elId: "marketRow1", // 1번째 줄: 지수·채권 (환율은 별도 처리라 여기서 제외)
     symbols: [
       { name: "코스피",     sym: "KS11" },
       { name: "코스닥",     sym: "KQ11" },
@@ -720,30 +724,23 @@ const MARKET_ROWS = [
       { name: "나스닥선물", sym: "NQ" },
       { name: "S&P",       sym: "SPX" },
       { name: "반도체지수", sym: "SOX" },
-      { name: "환율",       sym: "USD/KRW" },
       { name: "美10Y",      sym: "US10Y" },
     ],
   },
   {
-    elId: "marketRow2", // 2번째 줄: 원자재·암호화폐
+    elId: "marketRow2", // 2번째 줄 중 알루미늄·천연가스만 이 일반 로테이션을 씀 (나머지는 아래 전용 루프)
     symbols: [
-      { name: "WTI",       sym: "WTI/USD" },
-      { name: "브렌트유",   sym: "BRENT/USD" },
-      { name: "금",         sym: "XAU/USD" },
-      { name: "은",         sym: "XAG/USD" },
-      { name: "구리",       sym: "COPPER/USD" },
       { name: "알루미늄",   sym: "ALUMINUM/USD" },
       { name: "천연가스",   sym: "NATGAS/USD" },
-      { name: "비트코인",   sym: "BTC/USD" },
     ],
   },
 ];
-const MARKET_REFRESH_MS = 60 * 1000; // 1분마다 줄 하나씩 (전체 두 줄이 다 도는 데 2분)
+const MARKET_REFRESH_MS = 60 * 1000; // 1분마다 줄 하나씩 (전체 두 그룹이 다 도는 데 2분)
 
-let marketRowIndex = 0; // 0 또는 1 (1번째 줄 / 2번째 줄 번갈아)
+let marketRowIndex = 0;
 
 async function fetchMarketBatch(symbols){
-  const symParam = symbols.map(m => m.sym).join(",");
+  const symParam = symbols.map(s => (s.sym || s)).join(",");
   const url = MY_WORKER + "/?td_symbols=" + encodeURIComponent(symParam);
   const res = await fetch(url);
   const data = await res.json();
@@ -768,54 +765,204 @@ function renderMarketSymbol(m, q){
   </span>`;
 }
 
-function renderPlaceholders(){
-  MARKET_ROWS.forEach(row => {
-    const rowEl = document.getElementById(row.elId);
-    rowEl.innerHTML = row.symbols.map((m, i) =>
-      `<span id="mkt-${row.elId}-${i}">${renderMarketSymbol(m, null)}</span>`
-    ).join("");
-  });
+// 특정 도매인 slot(id)에 결과를 렌더링하는 공통 헬퍼
+function paintSlot(id, html){
+  const el = document.getElementById(id);
+  if(el) el.outerHTML = `<span id="${id}">${html}</span>`;
+  else document.getElementById("marketRow2").insertAdjacentHTML("beforeend", `<span id="${id}">${html}</span>`);
+}
+
+// Twelve Data로 특정 심볼 하나만 대체 조회 (다른 소스 실패시 폴백용)
+async function fetchTwelveDataFallback(tdSymbol){
+  const quotes = await fetchMarketBatch([tdSymbol]);
+  return quotes[tdSymbol] || null;
 }
 
 async function updateMarketTicker(){
   const row = MARKET_ROWS[marketRowIndex];
-  const rowEl = document.getElementById(row.elId);
   const symbols = row.symbols;
-
   try{
     const quotes = await fetchMarketBatch(symbols);
     symbols.forEach((m, i) => {
       const q = quotes[m.sym];
       if(!q) console.error(`[시장 지표 · ${m.name}] 응답에 없음 (심볼 확인 필요):`, quotes);
-      const el = document.getElementById("mkt-" + row.elId + "-" + i);
-      if(el) el.outerHTML = `<span id="mkt-${row.elId}-${i}">${renderMarketSymbol(m, q)}</span>`;
-      else rowEl.insertAdjacentHTML("beforeend", `<span id="mkt-${row.elId}-${i}">${renderMarketSymbol(m, q)}</span>`);
+      paintSlot("mkt-" + row.elId + "-" + i, renderMarketSymbol(m, q));
     });
   }catch(e){
     console.error(`[시장 지표 · ${row.elId}] 로딩 실패:`, e);
-    symbols.forEach((m, i) => {
-      if(!document.getElementById("mkt-" + row.elId + "-" + i)){
-        rowEl.insertAdjacentHTML("beforeend", `<span id="mkt-${row.elId}-${i}">${renderMarketSymbol(m, null)}</span>`);
-      }
-    });
   }
-
   marketRowIndex = (marketRowIndex + 1) % MARKET_ROWS.length;
 }
 
-renderPlaceholders();
-updateMarketTicker();
-setInterval(updateMarketTicker, MARKET_REFRESH_MS);
+// ---- 유가: WTI·브렌트유만 따로 떼서 30초마다 빠르게 (Twelve Data, 2크레딧이라 부담 적음) ----
+const OIL_SYMBOLS = [
+  { name: "WTI",     sym: "WTI/USD" },
+  { name: "브렌트유", sym: "BRENT/USD" },
+];
+async function updateOil(){
+  try{
+    const quotes = await fetchMarketBatch(OIL_SYMBOLS);
+    OIL_SYMBOLS.forEach((m, i) => {
+      const q = quotes[m.sym];
+      if(!q) console.error(`[시장 지표 · ${m.name}] 응답에 없음:`, quotes);
+      paintSlot("mkt-oil-" + i, renderMarketSymbol(m, q));
+    });
+  }catch(e){
+    console.error("[시장 지표 · 유가] 로딩 실패:", e);
+  }
+}
 
-// ---- F5 새로고침에 10초 딜레이 적용 (버튼은 없앰) ----
+// ---- 금·은·구리: gold-api.com (무료, 키 불필요, 요청 제한 없음) 우선, 실패하면 Twelve Data로 대체 ----
+const METALS = [
+  { name: "금", giSym: "XAU", tdSym: "XAU/USD" },
+  { name: "은", giSym: "XAG", tdSym: "XAG/USD" },
+  { name: "구리", giSym: "HG", tdSym: "COPPER/USD" },
+];
+const metalsPrevPrice = {}; // gold-api는 등락률을 안 줘서, 직전 값과 비교해 등락 표시
+
+function renderMetal(name, price, pct){
+  if(price == null){
+    return `<span class="mkt"><span class="mkt-name">${name}</span><span class="mkt-val">-</span></span>`;
+  }
+  const sign = pct > 0 ? "▲" : pct < 0 ? "▼" : "-";
+  const cls = pct > 0 ? "up" : pct < 0 ? "down" : "";
+  return `<span class="mkt">
+    <span class="mkt-name">${name}</span>
+    <span class="mkt-val">${price.toLocaleString("ko-KR", {maximumFractionDigits:2})}</span>
+    <span class="mkt-chg ${cls}">${(pct == null || isNaN(pct)) ? "" : sign + " " + Math.abs(pct).toFixed(2) + "%"}</span>
+  </span>`;
+}
+
+async function updateMetals(){
+  for(let i = 0; i < METALS.length; i++){
+    const m = METALS[i];
+    const slotId = "mkt-metal-" + i;
+    try{
+      const res = await fetch("https://api.gold-api.com/price/" + m.giSym);
+      if(!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      const price = parseFloat(data.price);
+      if(isNaN(price)) throw new Error("가격 없음");
+      const prev = metalsPrevPrice[m.giSym];
+      const pct = prev ? ((price - prev) / prev) * 100 : null; // 첫 조회는 비교 대상이 없어 등락률 생략
+      metalsPrevPrice[m.giSym] = price;
+      paintSlot(slotId, renderMetal(m.name, price, pct));
+    }catch(e){
+      console.error(`[시장 지표 · ${m.name}] gold-api 실패, Twelve Data로 대체 시도:`, e);
+      try{
+        const q = await fetchTwelveDataFallback(m.tdSym);
+        paintSlot(slotId, renderMarketSymbol({ name: m.name }, q));
+      }catch(e2){
+        console.error(`[시장 지표 · ${m.name}] Twelve Data 대체도 실패:`, e2);
+      }
+    }
+  }
+}
+
+// ---- 비트코인: CoinGecko 우선(무료, 사실상 무제한), 실패하면 Twelve Data로 대체 ----
+function renderBitcoin(price, pct){
+  if(price == null){
+    return `<span class="mkt"><span class="mkt-name">비트코인</span><span class="mkt-val">-</span></span>`;
+  }
+  const sign = pct > 0 ? "▲" : pct < 0 ? "▼" : "-";
+  const cls = pct > 0 ? "up" : pct < 0 ? "down" : "";
+  return `<span class="mkt">
+    <span class="mkt-name">비트코인</span>
+    <span class="mkt-val">$${price.toLocaleString("en-US", {maximumFractionDigits:0})}</span>
+    <span class="mkt-chg ${cls}">${(pct == null || isNaN(pct)) ? "" : sign + " " + Math.abs(pct).toFixed(2) + "%"}</span>
+  </span>`;
+}
+
+async function updateBitcoin(){
+  try{
+    const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true");
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    const price = data?.bitcoin?.usd;
+    const pct = data?.bitcoin?.usd_24h_change;
+    if(price == null) throw new Error("가격 없음");
+    paintSlot("mkt-btc", renderBitcoin(price, pct));
+  }catch(e){
+    console.error("[시장 지표 · 비트코인] CoinGecko 실패, Twelve Data로 대체 시도:", e);
+    try{
+      const q = await fetchTwelveDataFallback("BTC/USD");
+      paintSlot("mkt-btc", q ? renderMarketSymbol({ name: "비트코인" }, q) : renderBitcoin(null));
+    }catch(e2){
+      console.error("[시장 지표 · 비트코인] Twelve Data 대체도 실패:", e2);
+    }
+  }
+}
+
+// ---- 환율: Frankfurter.app (무료, 키 불필요, 사실상 무제한, ECB 데이터) 우선, 실패하면 Twelve Data로 대체 ----
+let forexPrevRate = null;
+async function updateForex(){
+  try{
+    const res = await fetch("https://api.frankfurter.dev/v1/latest?from=USD&to=KRW");
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    const rate = data?.rates?.KRW;
+    if(rate == null) throw new Error("환율 값 없음");
+    const prev = forexPrevRate;
+    const pct = prev ? ((rate - prev) / prev) * 100 : null; // 첫 조회는 비교 대상이 없어 등락률 생략
+    forexPrevRate = rate;
+    paintSlot("mkt-forex", renderMetal("환율", rate, pct));
+  }catch(e){
+    console.error("[시장 지표 · 환율] Frankfurter 실패, Twelve Data로 대체 시도:", e);
+    try{
+      const q = await fetchTwelveDataFallback("USD/KRW");
+      paintSlot("mkt-forex", q ? renderMarketSymbol({ name: "환율" }, q) : renderMetal("환율", null, null));
+    }catch(e2){
+      console.error("[시장 지표 · 환율] Twelve Data 대체도 실패:", e2);
+    }
+  }
+}
+
+// ---- 초기 배치: 페이지 열리자마자 2번째 줄 순서(WTI·브렌트유·금·은·구리·알루미늄·천연가스·비트코인)대로 이름부터 다 표시 ----
+function renderPlaceholders(){
+  const row1 = MARKET_ROWS[0];
+  // 환율은 반도체지수 다음, 美10Y 앞자리에 고정 배치 (Twelve Data 배치와는 별도 슬롯)
+  const row1Html = [
+    ...row1.symbols.slice(0, 6).map((m, i) => `<span id="mkt-${row1.elId}-${i}">${renderMarketSymbol(m, null)}</span>`),
+    `<span id="mkt-forex">${renderMetal("환율", null, null)}</span>`,
+    ...row1.symbols.slice(6).map((m, i) => `<span id="mkt-${row1.elId}-${i+6}">${renderMarketSymbol(m, null)}</span>`),
+  ];
+  document.getElementById(row1.elId).innerHTML = row1Html.join("");
+
+  const row2Html = [
+    ...OIL_SYMBOLS.map((m, i) => `<span id="mkt-oil-${i}">${renderMarketSymbol(m, null)}</span>`),
+    ...METALS.map((m, i) => `<span id="mkt-metal-${i}">${renderMetal(m.name, null, null)}</span>`),
+    ...MARKET_ROWS[1].symbols.map((m, i) => `<span id="mkt-${MARKET_ROWS[1].elId}-${i}">${renderMarketSymbol(m, null)}</span>`),
+    `<span id="mkt-btc">${renderBitcoin(null)}</span>`,
+  ];
+  document.getElementById("marketRow2").innerHTML = row2Html.join("");
+}
+
+renderPlaceholders();
+
+updateMarketTicker();
+setInterval(updateMarketTicker, MARKET_REFRESH_MS); // 지수/채권 + 알루미늄/천연가스: 1분마다 줄(그룹) 하나씩
+
+updateOil();
+setInterval(updateOil, 30 * 1000); // 유가: 30초마다
+
+updateMetals();
+setInterval(updateMetals, 30 * 1000); // 금·은·구리: 30초마다
+
+updateForex();
+setInterval(updateForex, 60 * 1000); // 환율: 1분마다 (Frankfurter는 하루 한 번 갱신되는 데이터라 자주 불러도 무방)
+
+updateBitcoin();
+setInterval(updateBitcoin, 15 * 1000); // 비트코인: 15초마다
+
+// ---- F5 새로고침에 5초 딜레이 적용 (버튼은 없앰) ----
 let lastLoadTime = 0;
 window.addEventListener("keydown", (e) => {
   const isRefreshKey = e.key === "F5" || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "r");
   if(!isRefreshKey) return;
   e.preventDefault(); // 브라우저의 실제 새로고침(전체 페이지 리로드) 대신 아래 로직으로 대체
   const elapsed = Date.now() - lastLoadTime;
-  if(elapsed < 10000){
-    document.getElementById("diag").textContent = `너무 빠릅니다 — ${Math.ceil((10000 - elapsed)/1000)}초 후 다시 시도하세요.`;
+  if(elapsed < 5000){
+    document.getElementById("diag").textContent = `너무 빠릅니다 — ${Math.ceil((5000 - elapsed)/1000)}초 후 다시 시도하세요.`;
     return;
   }
   loadAll();
