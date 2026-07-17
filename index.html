@@ -37,11 +37,11 @@
   /* 1·2번째 줄: 시장 지표 - 움직이지 않고 한 줄에 고정, 넘치면 가로 스크롤 */
   .market-row{
     overflow-x:auto; overflow-y:hidden; white-space:nowrap;
-    display:flex; align-items:center; gap:18px; padding:0 14px;
+    display:flex; align-items:center; gap:1ch; padding:0 14px;
     scrollbar-width:none;
   }
   .market-row::-webkit-scrollbar{ display:none; }
-  .mkt{ display:inline-flex; align-items:baseline; gap:5px; font-size:11.5px; white-space:nowrap; }
+  .mkt{ display:inline-flex; align-items:baseline; gap:4px; font-size:10px; white-space:nowrap; }
   .mkt .mkt-name{ color:var(--mute); }
   .mkt .mkt-val{ color:var(--ink); font-weight:600; }
   .mkt .mkt-chg.up{ color:var(--up); }
@@ -741,7 +741,8 @@ function renderQuoteSlot(name, price, pct, opts = {}){
   const cls = pct > 0 ? "up" : pct < 0 ? "down" : "";
   const prefix = opts.isDollar ? "$" : "";
   const valStr = prefix + price.toLocaleString(opts.isDollar ? "en-US" : "ko-KR", { maximumFractionDigits: 2 });
-  const pctStr = (pct == null || isNaN(pct)) ? "" : sign + Math.abs(pct).toFixed(2) + "%";
+  // toFixed(2)로 자리를 맞춘 뒤, parseFloat로 끝의 불필요한 0을 제거 (1.20 → 1.2, 1.00 → 1)
+  const pctStr = (pct == null || isNaN(pct)) ? "" : sign + parseFloat(Math.abs(pct).toFixed(2)) + "%";
   const dot = opts.isFallback ? `<span class="mkt-dot">.</span>` : "";
   return `<span class="mkt">
     <span class="mkt-name">${name}</span>
@@ -956,10 +957,10 @@ updateYahooGroup();
 setInterval(updateYahooGroup, 30 * 1000); // Yahoo 그룹(지수·유가·알루미늄·천연가스): 30초마다 순차 조회
 
 updateMetals();
-setInterval(updateMetals, 30 * 1000); // 금·은·구리: 30초마다
+setInterval(updateMetals, 10 * 1000); // 금·은·구리: 10초마다 (최대한 빠르게)
 
 updateForex();
-setInterval(updateForex, 30 * 1000); // 환율: 30초마다 (야후 1순위로 바뀌면서 실시간성이 생김)
+setInterval(updateForex, 10 * 1000); // 환율: 10초마다 (최대한 빠르게)
 
 updateBitcoin();
 setInterval(updateBitcoin, 15 * 1000); // 비트코인: 15초마다
