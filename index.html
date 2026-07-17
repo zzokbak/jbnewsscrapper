@@ -41,7 +41,7 @@
     scrollbar-width:none;
   }
   .market-row::-webkit-scrollbar{ display:none; }
-  .mkt{ display:inline-flex; align-items:baseline; gap:5px; font-size:12.5px; white-space:nowrap; }
+  .mkt{ display:inline-flex; align-items:baseline; gap:5px; font-size:11.5px; white-space:nowrap; }
   .mkt .mkt-name{ color:var(--mute); }
   .mkt .mkt-val{ color:var(--ink); font-weight:600; }
   .mkt .mkt-chg.up{ color:var(--up); }
@@ -715,6 +715,17 @@ function updateTape(){
 // 그래서 최종 우선순위는: ① Yahoo Finance(지수·유가·나머지 원자재), gold-api.com(금·은·구리), CoinGecko(비트코인),
 // Frankfurter(환율) — 전부 무료·키불필요 — ② 그래도 실패하면 Twelve Data로 대체(대체된 항목엔 끝에 흐린 "." 표시)
 
+// 공통: 제한시간을 두고 fetch (한쪽이 느려져도 전체가 밀리지 않도록)
+async function fetchWithTimeout(url, ms = 6000){
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try{
+    return await fetch(url, { signal: controller.signal });
+  }finally{
+    clearTimeout(timer);
+  }
+}
+
 // 공통: 특정 slot(id)에 결과를 렌더링
 function paintSlot(id, html){
   const el = document.getElementById(id);
@@ -767,7 +778,7 @@ const YAHOO_GROUP = [
 
 async function fetchYahooQuote(ticker){
   const targetUrl = "https://query1.finance.yahoo.com/v8/finance/chart/" + encodeURIComponent(ticker) + "?range=1d&interval=5m";
-  const res = await fetch(MY_WORKER + "/?url=" + encodeURIComponent(targetUrl));
+  const res = await fetchWithTimeout(MY_WORKER + "/?url=" + encodeURIComponent(targetUrl));
   if(!res.ok) throw new Error("HTTP " + res.status);
   const data = await res.json();
   const result = data?.chart?.result?.[0];
@@ -803,11 +814,11 @@ async function updateYahooGroup(){
   }
 }
 
-// ==== 금·은·구리: gold-api.com (무료, 키 불필요, 요청 제한 없음) 우선, 실패하면 Twelve Data로 대체 ====
+// ==== 금·은·구리: ① Yahoo Finance ② gold-api.com ③ Twelve Data 순으로 시도 ====
 const METALS = [
-  { name: "금",   giSym: "XAU", tdSym: "XAU/USD" },
-  { name: "은",   giSym: "XAG", tdSym: "XAG/USD" },
-  { name: "구리", giSym: "HG",  tdSym: "COPPER/USD" },
+  { name: "금",   ysym: "GC=F", giSym: "XAU", tdSym: "XAU/USD" },
+  { name: "은",   ysym: "SI=F", giSym: "XAG", tdSym: "XAG/USD" },
+  { name: "구리", ysym: "HG=F", giSym: "HG",  tdSym: "COPPER/USD" },
 ];
 const metalsPrevPrice = {}; // gold-api는 등락률을 안 줘서, 직전 값과 비교해 등락 표시
 
@@ -815,26 +826,41 @@ async function updateMetals(){
   for(let i = 0; i < METALS.length; i++){
     const m = METALS[i];
     const slotId = "mkt-metal-" + i;
+
+    // 1순위: Yahoo Finance
     try{
-      const res = await fetch("https://api.gold-api.com/price/" + m.giSym);
+      const { price, prevClose } = await fetchYahooQuote(m.ysym);
+      const pct = ((price - prevClose) / prevClose) * 100;
+      paintSlot(slotId, renderQuoteSlot(m.name, price, pct, { isDollar: true }));
+      continue;
+    }catch(e){
+      console.error(`[시장 지표 · ${m.name}] Yahoo 실패, gold-api로 대체 시도:`, e);
+    }
+
+    // 2순위: gold-api.com
+    try{
+      const res = await fetchWithTimeout("https://api.gold-api.com/price/" + m.giSym);
       if(!res.ok) throw new Error("HTTP " + res.status);
       const data = await res.json();
       const price = parseFloat(data.price);
       if(isNaN(price)) throw new Error("가격 없음");
       const prev = metalsPrevPrice[m.giSym];
-      const pct = prev ? ((price - prev) / prev) * 100 : null; // 첫 조회는 비교 대상이 없어 등락률 생략
+      const pct = prev ? ((price - prev) / prev) * 100 : null;
       metalsPrevPrice[m.giSym] = price;
       paintSlot(slotId, renderQuoteSlot(m.name, price, pct, { isDollar: true }));
+      continue;
     }catch(e){
-      console.error(`[시장 지표 · ${m.name}] gold-api 실패, Twelve Data로 대체 시도:`, e);
-      try{
-        const q = await fetchTwelveDataFallback(m.tdSym);
-        paintSlot(slotId, q
-          ? renderQuoteSlot(m.name, q.price, q.pct, { isDollar: true, isFallback: true })
-          : renderQuoteSlot(m.name, null));
-      }catch(e2){
-        console.error(`[시장 지표 · ${m.name}] Twelve Data 대체도 실패:`, e2);
-      }
+      console.error(`[시장 지표 · ${m.name}] gold-api도 실패, Twelve Data로 대체 시도:`, e);
+    }
+
+    // 3순위: Twelve Data
+    try{
+      const q = await fetchTwelveDataFallback(m.tdSym);
+      paintSlot(slotId, q
+        ? renderQuoteSlot(m.name, q.price, q.pct, { isDollar: true, isFallback: true })
+        : renderQuoteSlot(m.name, null));
+    }catch(e2){
+      console.error(`[시장 지표 · ${m.name}] Twelve Data 대체도 실패:`, e2);
     }
   }
 }
@@ -842,7 +868,7 @@ async function updateMetals(){
 // ==== 비트코인: CoinGecko 우선(무료, 사실상 무제한), 실패하면 Twelve Data로 대체 ====
 async function updateBitcoin(){
   try{
-    const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true");
+    const res = await fetchWithTimeout("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true");
     if(!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
     const price = data?.bitcoin?.usd;
@@ -862,11 +888,22 @@ async function updateBitcoin(){
   }
 }
 
-// ==== 환율: Frankfurter.app (무료, 키 불필요, 사실상 무제한, ECB 데이터) 우선, 실패하면 Twelve Data로 대체 ====
+// ==== 환율: ① Yahoo Finance ② Frankfurter.app ③ Twelve Data 순으로 시도 ====
 let forexPrevRate = null;
 async function updateForex(){
+  // 1순위: Yahoo Finance (KRW=X)
   try{
-    const res = await fetch("https://api.frankfurter.dev/v1/latest?from=USD&to=KRW");
+    const { price, prevClose } = await fetchYahooQuote("KRW=X");
+    const pct = ((price - prevClose) / prevClose) * 100;
+    paintSlot("mkt-forex", renderQuoteSlot("환율", price, pct));
+    return;
+  }catch(e){
+    console.error("[시장 지표 · 환율] Yahoo 실패, Frankfurter로 대체 시도:", e);
+  }
+
+  // 2순위: Frankfurter.app
+  try{
+    const res = await fetchWithTimeout("https://api.frankfurter.dev/v1/latest?from=USD&to=KRW");
     if(!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
     const rate = data?.rates?.KRW;
@@ -875,16 +912,19 @@ async function updateForex(){
     const pct = prev ? ((rate - prev) / prev) * 100 : null;
     forexPrevRate = rate;
     paintSlot("mkt-forex", renderQuoteSlot("환율", rate, pct));
+    return;
   }catch(e){
-    console.error("[시장 지표 · 환율] Frankfurter 실패, Twelve Data로 대체 시도:", e);
-    try{
-      const q = await fetchTwelveDataFallback("USD/KRW");
-      paintSlot("mkt-forex", q
-        ? renderQuoteSlot("환율", q.price, q.pct, { isFallback: true })
-        : renderQuoteSlot("환율", null));
-    }catch(e2){
-      console.error("[시장 지표 · 환율] Twelve Data 대체도 실패:", e2);
-    }
+    console.error("[시장 지표 · 환율] Frankfurter도 실패, Twelve Data로 대체 시도:", e);
+  }
+
+  // 3순위: Twelve Data
+  try{
+    const q = await fetchTwelveDataFallback("USD/KRW");
+    paintSlot("mkt-forex", q
+      ? renderQuoteSlot("환율", q.price, q.pct, { isFallback: true })
+      : renderQuoteSlot("환율", null));
+  }catch(e2){
+    console.error("[시장 지표 · 환율] Twelve Data 대체도 실패:", e2);
   }
 }
 
@@ -919,7 +959,7 @@ updateMetals();
 setInterval(updateMetals, 30 * 1000); // 금·은·구리: 30초마다
 
 updateForex();
-setInterval(updateForex, 60 * 1000); // 환율: 1분마다 (Frankfurter는 하루 한 번 갱신되는 데이터라 자주 불러도 무방)
+setInterval(updateForex, 30 * 1000); // 환율: 30초마다 (야후 1순위로 바뀌면서 실시간성이 생김)
 
 updateBitcoin();
 setInterval(updateBitcoin, 15 * 1000); // 비트코인: 15초마다
