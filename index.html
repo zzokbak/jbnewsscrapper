@@ -41,7 +41,7 @@
     scrollbar-width:none;
   }
   .market-row::-webkit-scrollbar{ display:none; }
-  .mkt{ display:inline-flex; align-items:baseline; gap:4px; font-size:11px; white-space:nowrap; }
+  .mkt{ display:inline-flex; align-items:baseline; gap:4px; font-size:11px !important; white-space:nowrap; }
   .mkt .mkt-name{ color:var(--mute); }
   .mkt .mkt-val{ color:var(--ink); font-weight:600; }
   .mkt .mkt-chg.up{ color:var(--up); }
@@ -222,6 +222,8 @@ const KEYWORDS = [...STRONG_MARKET_KEYWORDS, ...CONTEXT_REQUIRED_KEYWORDS];
 const SOURCES = [
   { name: "한국경제",   url: "https://www.hankyung.com/feed/finance" },
   { name: "파이낸셜뉴스", url: "https://www.fnnews.com/rss/r20/fn_realnews_stock.xml" },
+  { name: "파이낸셜뉴스", url: "https://www.fnnews.com/rss/r20/fn_realnews_economy.xml" },
+  { name: "파이낸셜뉴스", url: "https://www.fnnews.com/rss/r20/fn_realnews_finance.xml" },
   { name: "뉴시스",     url: "https://www.newsis.com/RSS/bank.xml" },    // 금융 섹션
   { name: "뉴시스",     url: "https://www.newsis.com/RSS/economy.xml" }, // 경제 섹션 — 둘을 합쳐서 최대 10개, 한쪽이 필터로 많이 걸러지면 다른 쪽에서 자동으로 채워짐
 ];
@@ -345,9 +347,10 @@ const NOISE_SINGLE_TERMS = [
   "부고","인사종합","동정","모친상","부친상","별세","빈소","발인",
   "오늘의 주요일정","주요일정",
   "전세","월세",
-  "당구","축구","배구","야구","농구",
+  "당구","축구","배구","야구","농구","스포츠","골프","테니스","올림픽","월드컵","kbo","kbl","kfa",
   "한부모가정","문화체험","초보",
   "공주","왕자","여왕","국왕","황제","왕실","국빈","정상회담",
+  "가요",
 ];
 
 // 두 단어가 같이 있어야 제외되는 조합
@@ -362,6 +365,7 @@ const NOISE_AND_GROUPS = [
 function isExcludedNoise(item){
   const combined = (item.title || "") + " " + (item.description || "");
   if(!combined.trim()) return false;
+  const combinedLower = combined.toLowerCase();
 
   // 뉴스가 아닌 커뮤니티/포럼 출처는 링크 도메인으로 걸러냄 (다음 웹문서 검색에서 종종 섞여 들어옴)
   const link = (item.link || "").toLowerCase();
@@ -370,14 +374,49 @@ function isExcludedNoise(item){
   const isPresidentDeath = /대통령/.test(combined) && /(사망|서거|타계)/.test(combined);
   if(isPresidentDeath) return false; // 예외: 대통령 사망/서거 소식은 통과
 
-  if(NOISE_SINGLE_TERMS.some(k => combined.includes(k))) return true;
+  if(NOISE_SINGLE_TERMS.some(k => combinedLower.includes(k.toLowerCase()))) return true;
   if(NOISE_AND_GROUPS.some(group => group.every(k => combined.includes(k)))) return true;
+
+  // "정치"·"공천"은 증시/금융 맥락 단어가 함께 없을 때만 제외 (정치 이슈가 실제 증시에 영향을 준 기사는 통과시킴)
+  if(combined.includes("정치") || combined.includes("공천")){
+    const hasMarket = STRONG_MARKET_KEYWORDS.some(k => combinedLower.includes(k.toLowerCase())) || hasMarketContext(combined);
+    if(!hasMarket) return true;
+  }
 
   // "중국" 일반 뉴스는 제외하되, CXMT·창신메모리 관련 기사는 예외적으로 허용
   const isChinaMemoryException = /cxmt/i.test(combined) || /창신\s?메모리/.test(combined);
   if(combined.includes("중국") && !isChinaMemoryException) return true;
 
   return false;
+}
+
+// 네이버 검색 결과의 원문 링크 도메인으로 실제 언론사를 추정 (네이버 탭에서 "네이버"라고만 뜨는 대신 실제 출처 표기용)
+const PRESS_DOMAIN_MAP = [
+  ["imbc.com","MBC"], ["sbs.co.kr","SBS"], ["jtbc.co.kr","JTBC"], ["kbs.co.kr","KBS"],
+  ["ytn.co.kr","YTN"], ["yna.co.kr","연합뉴스"], ["biz.chosun.com","조선비즈"], ["chosun.com","조선일보"],
+  ["joongang.co.kr","중앙일보"], ["joins.com","중앙일보"], ["donga.com","동아일보"],
+  ["hani.co.kr","한겨레"], ["khan.co.kr","경향신문"], ["hankyung.com","한국경제"],
+  ["mk.co.kr","매일경제"], ["fnnews.com","파이낸셜뉴스"], ["edaily.co.kr","이데일리"],
+  ["newsis.com","뉴시스"], ["news1.kr","뉴스1"], ["mt.co.kr","머니투데이"],
+  ["sedaily.com","서울경제"], ["asiae.co.kr","아시아경제"], ["heraldcorp.com","헤럴드경제"],
+  ["dt.co.kr","디지털타임스"], ["etnews.com","전자신문"], ["newspim.com","뉴스핌"],
+  ["kmib.co.kr","국민일보"], ["seoul.co.kr","서울신문"], ["segye.com","세계일보"],
+  ["munhwa.com","문화일보"], ["nocutnews.co.kr","노컷뉴스"], ["ohmynews.com","오마이뉴스"],
+  ["pressian.com","프레시안"], ["hankookilbo.com","한국일보"], ["hankooki.com","한국일보"],
+  ["ichannela.com","채널A"], ["tvchosun.com","TV조선"], ["mbn.co.kr","MBN"],
+  ["ekn.kr","에너지경제"], ["businesspost.co.kr","비즈니스포스트"],
+];
+
+function resolvePress(link){
+  try{
+    const host = new URL(link).hostname.toLowerCase();
+    for(const [frag, name] of PRESS_DOMAIN_MAP){
+      if(host.includes(frag)) return name;
+    }
+    return host.replace(/^www\./,"").replace(/^news\./,""); // 매핑에 없으면 도메인이라도 표시
+  }catch(e){
+    return null;
+  }
 }
 
 function stripHtml(html){
@@ -451,14 +490,18 @@ async function fetchNaverKeyword(keyword){
   if(!Array.isArray(data.items)){
     throw new Error("네이버 응답 형식 이상: " + JSON.stringify(data).slice(0,150));
   }
-  return data.items.map(it => ({
-    title: stripHtml(it.title),
-    link: it.originallink || it.link || "#",
-    pubDate: new Date(it.pubDate || Date.now()),
-    description: stripHtml(it.description || ""),
-    source: "네이버",
-    lang: "ko"
-  }));
+  return data.items.map(it => {
+    const link = it.originallink || it.link || "#";
+    return {
+      title: stripHtml(it.title),
+      link,
+      pubDate: new Date(it.pubDate || Date.now()),
+      description: stripHtml(it.description || ""),
+      source: "네이버",
+      press: resolvePress(link),
+      lang: "ko"
+    };
+  });
 }
 
 // 다음(카카오) 웹 문서 검색 — 카카오는 뉴스 전용 API가 없어 웹 문서 검색으로 대체 (Worker가 /?daum_query=키워드 로 프록시)
@@ -542,7 +585,10 @@ async function loadAll(){
 
   // 국내 소스는 한글 키워드로 필터(포털 검색은 이미 키워드로 검색했으니 그대로 통과), 해외 소스는 fetchSourceEn 단계에서 이미 필터됨
   const filteredKo = mergedKo.filter(item => matchesAnyKeyword(item));
-  const filtered = filteredKo.concat(mergedEn).filter(item => !isExcludedNoise(item));
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+  const filtered = filteredKo.concat(mergedEn)
+    .filter(item => !isExcludedNoise(item))
+    .filter(item => (Date.now() - item.pubDate.getTime()) <= ONE_DAY_MS); // 전날 이전(24시간 초과) 뉴스는 제외
   filtered.forEach(item => {
     // 한글 "속보" 또는 영문 원제목의 "BREAKING" 둘 다 속보로 인정
     const enBreaking = item.lang === "en" && item.titleEn && /\bbreaking\b/i.test(item.titleEn);
@@ -626,7 +672,7 @@ function render(){
       <div class="time">${i.pubDate.toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"})}<br>${i.pubDate.toLocaleDateString("ko-KR",{month:"2-digit",day:"2-digit"})}</div>
       <div>
         <a class="title" href="${i.link}" target="_blank" rel="noopener noreferrer" data-idx="${idx}">${i.title}</a>
-        <div class="src">${i.source}</div>
+        <div class="src">${i.press || i.source}</div>
       </div>
       <button class="copy-btn" data-idx="${idx}" title="링크 복사">${copyIcon}</button>
     </div>
@@ -698,13 +744,48 @@ function timeAgo(date){
   return Math.floor(diffHour / 24) + "일 전";
 }
 
+// 속보를 localStorage에 최근 3일치 누적 저장 — 이번 주기에 속보가 없어도 최근에 있었던 진짜 속보를 계속 보여주기 위함
+const BREAKING_STORE_KEY = "stockNewsBreakingHistory";
+const BREAKING_KEEP_MS = 3 * 24 * 60 * 60 * 1000; // 3일
+
+function saveBreakingHistory(newBreakingItems){
+  let history = [];
+  try{ history = JSON.parse(localStorage.getItem(BREAKING_STORE_KEY) || "[]"); }catch(e){ history = []; }
+
+  const incoming = newBreakingItems.map(i => ({ title: i.title, link: i.link, pubDate: i.pubDate.getTime() }));
+  const merged = [...incoming, ...history];
+
+  // 링크 기준 중복 제거 + 3일 지난 것 제외 + 최신순 정렬 + 최대 20개만 보관
+  const seen = new Set();
+  const cutoff = Date.now() - BREAKING_KEEP_MS;
+  const cleaned = merged
+    .filter(i => i.pubDate >= cutoff)
+    .filter(i => { if(seen.has(i.link)) return false; seen.add(i.link); return true; })
+    .sort((a, b) => b.pubDate - a.pubDate)
+    .slice(0, 20);
+
+  try{ localStorage.setItem(BREAKING_STORE_KEY, JSON.stringify(cleaned)); }catch(e){ /* 저장 공간 문제 등은 무시 */ }
+  return cleaned;
+}
+
 function updateTape(){
   // 속보(한글 "속보" 또는 영문 "BREAKING")만 — 3번째 줄
   const tape3 = document.getElementById("tape3");
-  let breaking = allItems.filter(i => i.isBreaking).slice(0, 16);
-  if(breaking.length === 0) breaking = allItems.slice(0, 2); // 속보가 하나도 없으면 최신 기사 2개로 대체
+  const currentBreaking = allItems.filter(i => i.isBreaking);
+  const history = saveBreakingHistory(currentBreaking); // 이번에 새로 찾은 속보를 기록에 반영
+
+  let breaking;
+  if(currentBreaking.length > 0){
+    breaking = currentBreaking.slice(0, 16).map(i => i.title);
+  }else if(history.length > 0){
+    // 이번 주기엔 속보가 없어도, 최근 3일 안에 있었던 진짜 속보 중 최신 2개를 대신 표시
+    breaking = history.slice(0, 2).map(i => i.title);
+  }else{
+    breaking = allItems.slice(0, 2).map(i => i.title); // 그마저도 없으면 최신 기사 2개로 최종 대체
+  }
+
   tape3.innerHTML = breaking.length
-    ? breaking.map(i => `<span>● ${i.title}</span>`).join("")
+    ? breaking.map(t => `<span>● ${t}</span>`).join("")
     : `<span>표시할 뉴스가 없습니다</span>`;
 }
 
@@ -934,7 +1015,10 @@ async function updateForex(){
 // 2번째 줄: WTI·브렌트유·금·은·구리·알루미늄·천연가스·비트코인
 function renderPlaceholders(){
   const row1Html = [
-    ...YAHOO_GROUP.slice(0, 6).map((m, i) => `<span id="mkt-yh-${i}">${renderQuoteSlot(m.name, null)}</span>`),
+    `<span id="mkt-yh-0">${renderQuoteSlot(YAHOO_GROUP[0].name, null)}</span>`, // 코스피
+    `<span id="mkt-yh-1">${renderQuoteSlot(YAHOO_GROUP[1].name, null)}</span>`, // 코스닥
+    `<span class="mkt" title="2025년 6월부터 KRX 자체 야간거래 시스템으로 전환되어 국제 데이터 공급망(야후·트웰브데이터 등)에서 빠짐 — 무료 소스를 못 찾았습니다"><span class="mkt-name">코스피야선</span><span class="mkt-val">-</span></span>`,
+    ...YAHOO_GROUP.slice(2, 6).map((m, i) => `<span id="mkt-yh-${i+2}">${renderQuoteSlot(m.name, null)}</span>`),
     `<span id="mkt-forex">${renderQuoteSlot("환율", null)}</span>`,
     `<span id="mkt-yh-6">${renderQuoteSlot("美10Y", null)}</span>`,
   ];
