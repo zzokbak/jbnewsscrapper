@@ -348,6 +348,8 @@ const NOISE_SINGLE_TERMS = [
   "오늘의 주요일정","주요일정",
   "전세","월세",
   "당구","축구","배구","야구","농구","스포츠","골프","테니스","올림픽","월드컵","kbo","kbl","kfa",
+  "메이저리그","구단","npb","mlb","투수","tvis","일간스포츠",
+  "권오용","기자가만난세상","기자가 만난 세상","정치부","예능","문화부","칼럼",
   "한부모가정","문화체험","초보",
   "공주","왕자","여왕","국왕","황제","왕실","국빈","정상회담",
   "가요",
@@ -370,6 +372,7 @@ function isExcludedNoise(item){
   // 뉴스가 아닌 커뮤니티/포럼 출처는 링크 도메인으로 걸러냄 (다음 웹문서 검색에서 종종 섞여 들어옴)
   const link = (item.link || "").toLowerCase();
   if(/dcinside\.com/.test(link)) return true;
+  if(/isplus\.com/.test(link)) return true; // 일간스포츠
 
   const isPresidentDeath = /대통령/.test(combined) && /(사망|서거|타계)/.test(combined);
   if(isPresidentDeath) return false; // 예외: 대통령 사망/서거 소식은 통과
