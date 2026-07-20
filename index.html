@@ -1017,7 +1017,6 @@ function renderPlaceholders(){
   const row1Html = [
     `<span id="mkt-yh-0">${renderQuoteSlot(YAHOO_GROUP[0].name, null)}</span>`, // 코스피
     `<span id="mkt-yh-1">${renderQuoteSlot(YAHOO_GROUP[1].name, null)}</span>`, // 코스닥
-    `<span class="mkt" title="2025년 6월부터 KRX 자체 야간거래 시스템으로 전환되어 국제 데이터 공급망(야후·트웰브데이터 등)에서 빠짐 — 무료 소스를 못 찾았습니다"><span class="mkt-name">코스피야선</span><span class="mkt-val">-</span></span>`,
     ...YAHOO_GROUP.slice(2, 6).map((m, i) => `<span id="mkt-yh-${i+2}">${renderQuoteSlot(m.name, null)}</span>`),
     `<span id="mkt-forex">${renderQuoteSlot("환율", null)}</span>`,
     `<span id="mkt-yh-6">${renderQuoteSlot("美10Y", null)}</span>`,
