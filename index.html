@@ -210,6 +210,11 @@ const KEYWORD_AND_GROUPS_STRONG = [
   ["호르무즈","폐쇄"],
   ["호르무즈","통과"],
   ["호르무즈","피격"],
+  ["창신","계약"],
+  ["CXMT","계약"],
+  ["TSMC","계약"],
+  ["유가","상승"],
+  ["유가","하락"],
 ];
 
 // 포털 검색(네이버·다음)에 실제로 보낼 검색어 목록에는 애매한 키워드까지 전부 포함 (검색 자체는 넓게, 최종 필터링에서 좁힘)
@@ -319,6 +324,9 @@ function matchesAnyKeyword(item){
   // 1. 그 자체로 확실한 증시 키워드면 바로 통과 (CXMT 같은 영문 표기 대소문자 무관하게 처리)
   if(STRONG_MARKET_KEYWORDS.some(k => combined.includes(k.toLowerCase()))) return true;
 
+  // 1-0. "소버린 AI" / "모두의 AI" — 띄어쓰기가 있든 없든 매칭되도록 정규식으로 처리
+  if(/소버린\s*ai|모두의\s*ai/i.test(combined)) return true;
+
   // 1-1. 사용자가 지정한 "이미 증시 뉴스로 확실한" 조합도 맥락 단어 없이 바로 통과
   if(KEYWORD_AND_GROUPS_STRONG.some(group => group.every(k => combined.includes(k.toLowerCase())))) return true;
 
@@ -351,6 +359,7 @@ const NOISE_SINGLE_TERMS = [
   "메이저리그","구단","npb","mlb","투수","tvis","일간스포츠",
   "권오용","기자가만난세상","기자가 만난 세상","정치부","예능","문화부","칼럼",
   "톱스타뉴스","공공기관","헬스조선","에듀",
+  "인턴 기자","인턴기자","오피니언","기자수첩","[기고]",
   "한부모가정","문화체험","초보",
   "공주","왕자","여왕","국왕","황제","왕실","국빈","정상회담",
   "가요",
@@ -389,6 +398,10 @@ function isExcludedNoise(item){
     const hasMarket = STRONG_MARKET_KEYWORDS.some(k => combinedLower.includes(k.toLowerCase())) || hasMarketContext(combined);
     if(!hasMarket) return true;
   }
+
+  // 상속·친자·유언 중 2개 이상이 같이 나오면 (유산 분쟁 등 법조 기사) 제외
+  const inheritanceHits = ["상속","친자","유언"].filter(k => combined.includes(k)).length;
+  if(inheritanceHits >= 2) return true;
 
   // "중국" 일반 뉴스는 제외하되, CXMT·창신메모리 관련 기사는 예외적으로 허용
   const isChinaMemoryException = /cxmt/i.test(combined) || /창신\s?메모리/.test(combined);
