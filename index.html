@@ -51,7 +51,9 @@
   }
   .tape-row + .tape-row{ border-top:1px solid var(--line); }
 
-  .mkt{ display:flex; align-items:baseline; gap:4px; font-size:11px !important; white-space:nowrap; }
+  .mkt{ display:flex; flex-direction:column; font-size:11px !important; white-space:nowrap; line-height:1.35; }
+  .mkt .mkt-row1{ display:flex; align-items:baseline; gap:4px; }
+  .mkt .mkt-row2{ display:flex; align-items:baseline; }
   .mkt .mkt-name{ color:var(--mute); }
   .mkt .mkt-val{ color:var(--ink); font-weight:600; }
   .mkt .mkt-chg.up{ color:var(--up); }
@@ -892,7 +894,7 @@ function paintSlot(id, html){
 // 공통 렌더러: 이름/값/등락률. isDollar면 $ 표시, isFallback이면 끝에 흐린 "." 표시 (Twelve Data로 대체됐다는 표시)
 function renderQuoteSlot(name, price, pct, opts = {}){
   if(price == null || isNaN(price)){
-    return `<span class="mkt"><span class="mkt-name">${name}</span><span class="mkt-val">-</span></span>`;
+    return `<span class="mkt"><span class="mkt-row1"><span class="mkt-name">${name}</span><span class="mkt-val">-</span></span></span>`;
   }
   const sign = pct > 0 ? "▲" : pct < 0 ? "▼" : "-";
   const cls = pct > 0 ? "up" : pct < 0 ? "down" : "";
@@ -902,9 +904,8 @@ function renderQuoteSlot(name, price, pct, opts = {}){
   const pctStr = (pct == null || isNaN(pct)) ? "" : sign + parseFloat(Math.abs(pct).toFixed(2)) + "%";
   const dot = opts.isFallback ? `<span class="mkt-dot">.</span>` : "";
   return `<span class="mkt">
-    <span class="mkt-name">${name}</span>
-    <span class="mkt-val">${valStr}</span>
-    <span class="mkt-chg ${cls}">${pctStr}</span>${dot}
+    <span class="mkt-row1"><span class="mkt-name">${name}</span><span class="mkt-val">${valStr}</span></span>
+    <span class="mkt-row2"><span class="mkt-chg ${cls}">${pctStr}</span>${dot}</span>
   </span>`;
 }
 
