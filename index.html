@@ -21,10 +21,27 @@
   body{
     margin:0; background:var(--bg); color:var(--ink);
     font-family:'IBM Plex Mono', monospace;
+    padding-left:130px; /* 왼쪽 시장지표 사이드바 자리 확보 */
   }
   h1,h2,.serif{font-family:'Noto Serif KR', serif;}
 
-  /* ---- 상단 티커: 1번째 줄(시장 지표, 고정/무애니메이션) + 2번째 줄(속보, 스크롤) ---- */
+  /* ---- 왼쪽 고정 시장지표 사이드바 (세로 방향, 항목 간 간격 최소) ---- */
+  #marketSidebar{
+    position:fixed; left:0; top:0; bottom:0; width:130px;
+    background:var(--panel); border-right:1px solid var(--line);
+    overflow-y:auto; overflow-x:hidden; padding:10px 8px;
+    display:flex; flex-direction:column; gap:1px;
+    z-index:40; scrollbar-width:thin;
+  }
+  #marketSidebar::-webkit-scrollbar{ width:4px; }
+  #marketSidebar .mkt{ padding:1px 0; }
+  @media (max-width:480px){
+    body{ padding-left:92px; }
+    #marketSidebar{ width:92px; padding:8px 5px; }
+    #marketSidebar .mkt{ font-size:9.5px !important; }
+  }
+
+  /* ---- 상단 티커: 속보(스크롤) 줄 ---- */
   .tape-wrap{
     background:var(--bg); border-bottom:1px solid var(--line);
     overflow:hidden; position:relative;
@@ -34,14 +51,7 @@
   }
   .tape-row + .tape-row{ border-top:1px solid var(--line); }
 
-  /* 1·2번째 줄: 시장 지표 - 움직이지 않고 한 줄에 고정, 넘치면 가로 스크롤 */
-  .market-row{
-    overflow-x:auto; overflow-y:hidden; white-space:nowrap;
-    display:flex; align-items:center; gap:1ch; padding:0 14px;
-    scrollbar-width:none;
-  }
-  .market-row::-webkit-scrollbar{ display:none; }
-  .mkt{ display:inline-flex; align-items:baseline; gap:4px; font-size:11px !important; white-space:nowrap; }
+  .mkt{ display:flex; align-items:baseline; gap:4px; font-size:11px !important; white-space:nowrap; }
   .mkt .mkt-name{ color:var(--mute); }
   .mkt .mkt-val{ color:var(--ink); font-weight:600; }
   .mkt .mkt-chg.up{ color:var(--up); }
@@ -146,9 +156,9 @@
 </head>
 <body>
 
+<div id="marketSidebar"></div>
+
 <div class="tape-wrap">
-  <div class="tape-row market-row" id="marketRow1"></div>
-  <div class="tape-row market-row" id="marketRow2"></div>
   <div class="tape-row"><div class="tape" id="tape3"></div></div>
 </div>
 
@@ -158,8 +168,9 @@
     <div class="sub">(주식 관련 뉴스 자동 수집 · 최신순 정렬)</div>
   </div>
   <div class="status">
-    <div><span class="dot"></span>자동 갱신 <b>ON</b> · 10분 주기</div>
+    <div><span class="dot"></span>자동 갱신 <b>ON</b> · 5분 주기</div>
     <div id="lastUpdated">마지막 갱신 — 불러오는 중…</div>
+    <div id="naverQuota" style="font-size:10.5px;"></div>
   </div>
 </header>
 
@@ -251,7 +262,7 @@ const KEYWORDS_EN = ["Samsung","SK Hynix","Hynix","earnings","rebalancing","stoc
 // 아래 스위치를 true로 바꾸면 시도합니다 — 단, Worker에 먼저 키를 등록해야 동작합니다 (안내 참고).
 const USE_PORTAL_SEARCH = true;
 
-const REFRESH_MS = 10 * 60 * 1000; // 10분
+const REFRESH_MS = 5 * 60 * 1000; // 5분 (3명이 각자 브라우저를 켜두는 걸 감안해 네이버 무료 한도의 약 60%만 쓰도록 여유있게 설정)
 const MAX_ITEMS = 150;
 const PER_SOURCE_MAX = 10; // 탭(언론사)마다 최대 10개까지만
 
@@ -358,7 +369,7 @@ const NOISE_SINGLE_TERMS = [
   "당구","축구","배구","야구","농구","스포츠","골프","테니스","올림픽","월드컵","kbo","kbl","kfa",
   "메이저리그","구단","npb","mlb","투수","tvis","일간스포츠",
   "권오용","기자가만난세상","기자가 만난 세상","정치부","예능","문화부","칼럼",
-  "톱스타뉴스","공공기관","헬스조선","에듀",
+  "톱스타뉴스","공공기관","헬스조선","에듀","mhn포토",
   "인턴 기자","인턴기자","오피니언","기자수첩","[기고]",
   "한부모가정","문화체험","초보",
   "공주","왕자","여왕","국왕","황제","왕실","국빈","정상회담",
@@ -572,77 +583,122 @@ async function fetchPortal(fetchFn, label){
   return merged;
 }
 
+// 네이버 무료 조회 한도(하루 25,000건) 트래커 — 이제 로컬 브라우저가 아니라
+// Worker의 KV 저장소에 기록해서, 같이 쓰는 3명이 전부 같은 숫자를 보게 됩니다.
+const NAVER_DAILY_LIMIT = 25000;
+async function trackNaverUsage(n){
+  try{
+    const res = await fetch(MY_WORKER + "/?quota_action=increment&n=" + n);
+    const data = await res.json();
+    return data.used;
+  }catch(e){
+    console.error("[네이버 조회 카운터] 기록 실패:", e);
+    return null;
+  }
+}
+async function fetchNaverUsage(){
+  try{
+    const res = await fetch(MY_WORKER + "/?quota_action=read");
+    const data = await res.json();
+    return data.used;
+  }catch(e){
+    console.error("[네이버 조회 카운터] 조회 실패:", e);
+    return null;
+  }
+}
+function renderNaverQuota(used){
+  if(used == null){
+    document.getElementById("naverQuota").textContent = "네이버 무료 조회 남은 횟수 — 확인 불가 (Worker에 KV 연동 필요)";
+    return;
+  }
+  const remaining = Math.max(0, NAVER_DAILY_LIMIT - used);
+  document.getElementById("naverQuota").textContent =
+    `네이버 무료 조회 남은 횟수(전체 공용) — ${remaining.toLocaleString("ko-KR")} / ${NAVER_DAILY_LIMIT.toLocaleString("ko-KR")}`;
+}
+fetchNaverUsage().then(renderNaverQuota);
+
+let isLoadingNews = false;
 async function loadAll(){
-  document.getElementById("lastUpdated").textContent = "마지막 갱신 — 불러오는 중…";
-  const allSources = [...SOURCES.map(s => ({...s, lang:"ko"})), ...SOURCES_EN.map(s => ({...s, lang:"en"}))];
-  const fetchTasks = allSources.map(s => s.lang === "en" ? fetchSourceEn(s) : fetchSource(s));
+  if(isLoadingNews) return; // 이전 주기가 아직 안 끝났으면 겹쳐서 실행하지 않음
+  isLoadingNews = true;
+  try{
+    document.getElementById("lastUpdated").textContent = "마지막 갱신 — 불러오는 중…";
+    const allSources = [...SOURCES.map(s => ({...s, lang:"ko"})), ...SOURCES_EN.map(s => ({...s, lang:"en"}))];
+    const fetchTasks = allSources.map(s => s.lang === "en" ? fetchSourceEn(s) : fetchSource(s));
 
-  // 네이버·다음 포털 검색 (Worker에 API 키가 등록돼 있을 때만 시도)
-  const portalNames = [];
-  if(USE_PORTAL_SEARCH && MY_WORKER){
-    fetchTasks.push(fetchPortal(fetchNaverKeyword, "네이버")); portalNames.push("네이버");
-    fetchTasks.push(fetchPortal(fetchDaumKeyword, "다음"));   portalNames.push("다음");
-  }
-
-  const results = await Promise.allSettled(fetchTasks);
-  let mergedKo = [];
-  let mergedEn = [];
-  failedSources = [];
-  results.forEach((r, idx) => {
-    const isPortal = idx >= allSources.length;
-    const name = isPortal ? portalNames[idx - allSources.length] : allSources[idx].name;
-    const lang = isPortal ? "ko" : allSources[idx].lang;
-    if(r.status === "fulfilled"){
-      if(lang === "en") mergedEn = mergedEn.concat(r.value);
-      else mergedKo = mergedKo.concat(r.value);
-    }else{
-      failedSources.push(name);
-      console.error(`[${name}] 로딩 실패:`, r.reason);
+    // 네이버·다음 포털 검색 (Worker에 API 키가 등록돼 있을 때만 시도)
+    const portalNames = [];
+    if(USE_PORTAL_SEARCH && MY_WORKER){
+      trackNaverUsage(PORTAL_QUERIES.length).then(renderNaverQuota);
+      fetchTasks.push(fetchPortal(fetchNaverKeyword, "네이버")); portalNames.push("네이버");
+      fetchTasks.push(fetchPortal(fetchDaumKeyword, "다음"));   portalNames.push("다음");
     }
-  });
-  document.getElementById("diag").textContent =
-    failedSources.length ? `일부 언론사 로딩 실패: ${failedSources.join(", ")}` : "";
 
-  // 국내 소스는 한글 키워드로 필터(포털 검색은 이미 키워드로 검색했으니 그대로 통과), 해외 소스는 fetchSourceEn 단계에서 이미 필터됨
-  const filteredKo = mergedKo.filter(item => matchesAnyKeyword(item));
-  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-  const filtered = filteredKo.concat(mergedEn)
-    .filter(item => !isExcludedNoise(item))
-    .filter(item => (Date.now() - item.pubDate.getTime()) <= ONE_DAY_MS); // 전날 이전(24시간 초과) 뉴스는 제외
-  filtered.forEach(item => {
-    // 한글 "속보" 또는 영문 원제목의 "BREAKING" 둘 다 속보로 인정
-    const enBreaking = item.lang === "en" && item.titleEn && /\bbreaking\b/i.test(item.titleEn);
-    if(item.title.includes("속보") || enBreaking) item.isBreaking = true;
-  });
+    const results = await Promise.allSettled(fetchTasks);
+    let mergedKo = [];
+    let mergedEn = [];
+    failedSources = [];
+    results.forEach((r, idx) => {
+      const isPortal = idx >= allSources.length;
+      const name = isPortal ? portalNames[idx - allSources.length] : allSources[idx].name;
+      const lang = isPortal ? "ko" : allSources[idx].lang;
+      if(r.status === "fulfilled"){
+        if(lang === "en") mergedEn = mergedEn.concat(r.value);
+        else mergedKo = mergedKo.concat(r.value);
+      }else{
+        failedSources.push(name);
+        console.error(`[${name}] 로딩 실패:`, r.reason);
+      }
+    });
+    document.getElementById("diag").textContent =
+      failedSources.length ? `일부 언론사 로딩 실패: ${failedSources.join(", ")}` : "";
 
-  // 중복 제거
-  const seen = new Set();
-  const deduped = [];
-  for(const item of filtered.sort((a,b)=>b.pubDate-a.pubDate)){
-    const key = normalizeTitle(item.title);
-    if(seen.has(key) || seen.has(item.link)) continue;
-    seen.add(key); seen.add(item.link);
-    deduped.push(item);
+    // 국내 소스는 한글 키워드로 필터(포털 검색은 이미 키워드로 검색했으니 그대로 통과), 해외 소스는 fetchSourceEn 단계에서 이미 필터됨
+    const filteredKo = mergedKo.filter(item => matchesAnyKeyword(item));
+    const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+    const filtered = filteredKo.concat(mergedEn)
+      .filter(item => !isExcludedNoise(item))
+      .filter(item => (Date.now() - item.pubDate.getTime()) <= ONE_DAY_MS); // 전날 이전(24시간 초과) 뉴스는 제외
+    filtered.forEach(item => {
+      // 한글 "속보" 또는 영문 원제목의 "BREAKING" 둘 다 속보로 인정
+      const enBreaking = item.lang === "en" && item.titleEn && /\bbreaking\b/i.test(item.titleEn);
+      if(item.title.includes("속보") || enBreaking) item.isBreaking = true;
+    });
+
+    // 중복 제거 — 이번에 새로 가져온 것 + 기존에 이미 갖고 있던 것을 합쳐서 처리
+    // (매번 전체를 지우고 새로 채우는 대신, 겹치는 건 걸러내고 진짜 새 기사만 누적)
+    const combinedPool = filtered.concat(allItems)
+      .filter(item => (Date.now() - item.pubDate.getTime()) <= ONE_DAY_MS); // 병합 후에도 24시간 넘은 건 계속 걸러냄
+    const seen = new Set();
+    const deduped = [];
+    for(const item of combinedPool.sort((a,b)=>b.pubDate-a.pubDate)){
+      const key = normalizeTitle(item.title);
+      if(seen.has(key) || seen.has(item.link)) continue;
+      seen.add(key); seen.add(item.link);
+      deduped.push(item);
+    }
+
+    // 탭(언론사)마다 최대 PER_SOURCE_MAX개까지만 (네이버가 압도적으로 많이 잡히는 것 방지)
+    const sourceCounts = {};
+    const capped = [];
+    for(const item of deduped){
+      const c = sourceCounts[item.source] || 0;
+      if(c >= PER_SOURCE_MAX) continue;
+      sourceCounts[item.source] = c + 1;
+      capped.push(item);
+    }
+
+    allItems = capped.slice(0, MAX_ITEMS);
+    buildTabs();
+    render();
+    updateTape();
+    lastLoadTime = Date.now();
+    const now = new Date();
+    document.getElementById("lastUpdated").textContent =
+      "마지막 갱신 — " + now.toLocaleTimeString("ko-KR", {hour:"2-digit", minute:"2-digit"});
+  }finally{
+    isLoadingNews = false;
   }
-
-  // 탭(언론사)마다 최대 PER_SOURCE_MAX개까지만 (네이버가 압도적으로 많이 잡히는 것 방지)
-  const sourceCounts = {};
-  const capped = [];
-  for(const item of deduped){
-    const c = sourceCounts[item.source] || 0;
-    if(c >= PER_SOURCE_MAX) continue;
-    sourceCounts[item.source] = c + 1;
-    capped.push(item);
-  }
-
-  allItems = capped.slice(0, MAX_ITEMS);
-  buildTabs();
-  render();
-  updateTape();
-  lastLoadTime = Date.now();
-  const now = new Date();
-  document.getElementById("lastUpdated").textContent =
-    "마지막 갱신 — " + now.toLocaleTimeString("ko-KR", {hour:"2-digit", minute:"2-digit"});
 }
 
 // 탭 표시 순서 고정 (목록에 없는 소스는 뒤로 밀림)
@@ -1030,20 +1086,15 @@ async function updateForex(){
   }
 }
 
-// ==== 초기 배치: 페이지 열리자마자 순서대로 이름부터 다 표시 ====
-// 1번째 줄: 코스피·코스닥·나스닥·나스닥선물·S&P·반도체지수·환율·美10Y
-// 2번째 줄: WTI·브렌트유·금·은·구리·알루미늄·천연가스·비트코인
+// ==== 초기 배치: 페이지 열리자마자 순서대로 이름부터 다 표시 (왼쪽 사이드바에 세로로 한 줄씩) ====
+// 순서: 코스피·코스닥·나스닥·나스닥선물·S&P·반도체지수·환율·美10Y·WTI·브렌트유·금·은·구리·알루미늄·천연가스·비트코인
 function renderPlaceholders(){
-  const row1Html = [
+  const items = [
     `<span id="mkt-yh-0">${renderQuoteSlot(YAHOO_GROUP[0].name, null)}</span>`, // 코스피
     `<span id="mkt-yh-1">${renderQuoteSlot(YAHOO_GROUP[1].name, null)}</span>`, // 코스닥
     ...YAHOO_GROUP.slice(2, 6).map((m, i) => `<span id="mkt-yh-${i+2}">${renderQuoteSlot(m.name, null)}</span>`),
     `<span id="mkt-forex">${renderQuoteSlot("환율", null)}</span>`,
     `<span id="mkt-yh-6">${renderQuoteSlot("美10Y", null)}</span>`,
-  ];
-  document.getElementById("marketRow1").innerHTML = row1Html.join("");
-
-  const row2Html = [
     `<span id="mkt-yh-7">${renderQuoteSlot("WTI", null)}</span>`,
     `<span id="mkt-yh-8">${renderQuoteSlot("브렌트유", null)}</span>`,
     ...METALS.map((m, i) => `<span id="mkt-metal-${i}">${renderQuoteSlot(m.name, null)}</span>`),
@@ -1051,7 +1102,7 @@ function renderPlaceholders(){
     `<span id="mkt-yh-10">${renderQuoteSlot("천연가스", null)}</span>`,
     `<span id="mkt-btc">${renderQuoteSlot("비트코인", null)}</span>`,
   ];
-  document.getElementById("marketRow2").innerHTML = row2Html.join("");
+  document.getElementById("marketSidebar").innerHTML = items.join("");
 }
 
 renderPlaceholders();
