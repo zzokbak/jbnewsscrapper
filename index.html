@@ -56,6 +56,7 @@
   .mkt .mkt-val{ color:var(--ink); font-weight:600; }
   .mkt .mkt-chg.up{ color:var(--up); }
   .mkt .mkt-chg.down{ color:var(--down); }
+  .mkt .mkt-chg.flat{ color:var(--mute); }
   .mkt .mkt-dot{ color:var(--mute); margin-left:2px; }
 
   /* 3번째 줄: 속보 - 계속 옆으로 흐름 */
@@ -894,8 +895,8 @@ function renderQuoteSlot(name, price, pct, opts = {}){
   if(price == null || isNaN(price)){
     return `<span class="mkt"><span class="mkt-name">${name}</span><span class="mkt-val">-</span></span>`;
   }
-  const sign = pct > 0 ? "▲" : pct < 0 ? "▼" : "-";
-  const cls = pct > 0 ? "up" : pct < 0 ? "down" : "";
+  const sign = pct > 0 ? "▲" : pct < 0 ? "▼" : "·";
+  const cls = pct > 0 ? "up" : pct < 0 ? "down" : "flat";
   const prefix = opts.isDollar ? "$" : "";
   const digits = opts.decimals != null ? opts.decimals : 2;
   const valStr = prefix + price.toLocaleString(opts.isDollar ? "en-US" : "ko-KR", { maximumFractionDigits: digits });
