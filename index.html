@@ -21,13 +21,13 @@
   body{
     margin:0; background:var(--bg); color:var(--ink);
     font-family:'IBM Plex Mono', monospace;
-    padding-left:140px; /* 왼쪽 시장지표 사이드바 자리 확보 */
+    padding-left:160px; /* 왼쪽 시장지표 사이드바 자리 확보 (Bitcoin 줄 기준 여유 있게) */
   }
   h1,h2,.serif{font-family:'Noto Serif KR', serif;}
 
   /* ---- 왼쪽 고정 시장지표 사이드바 (세로 방향, 항목 간 간격 최소) ---- */
   #marketSidebar{
-    position:fixed; left:0; top:0; bottom:0; width:140px;
+    position:fixed; left:0; top:0; bottom:0; width:160px;
     background:var(--panel); border-right:1px solid var(--line);
     overflow-y:auto; overflow-x:hidden; padding:10px 8px;
     display:flex; flex-direction:column; gap:1px;
@@ -36,8 +36,8 @@
   #marketSidebar::-webkit-scrollbar{ width:4px; }
   #marketSidebar .mkt{ padding:1px 0; }
   @media (max-width:480px){
-    body{ padding-left:102px; }
-    #marketSidebar{ width:102px; padding:8px 5px; }
+    body{ padding-left:114px; }
+    #marketSidebar{ width:114px; padding:8px 5px; }
     #marketSidebar .mkt{ font-size:9.5px !important; }
   }
 
@@ -1033,14 +1033,14 @@ async function updateBitcoin(){
     const price = data?.bitcoin?.usd;
     const pct = data?.bitcoin?.usd_24h_change;
     if(price == null) throw new Error("가격 없음");
-    paintSlot("mkt-btc", renderQuoteSlot("bitcoin", price, pct, { isDollar: true }));
+    paintSlot("mkt-btc", renderQuoteSlot("Bitcoin", price, pct, { isDollar: true }));
   }catch(e){
     console.error("[시장 지표 · bitcoin] CoinGecko 실패, Twelve Data로 대체 시도:", e);
     try{
       const q = await fetchTwelveDataFallback("BTC/USD");
       paintSlot("mkt-btc", q
-        ? renderQuoteSlot("bitcoin", q.price, q.pct, { isDollar: true, isFallback: true })
-        : renderQuoteSlot("bitcoin", null));
+        ? renderQuoteSlot("Bitcoin", q.price, q.pct, { isDollar: true, isFallback: true })
+        : renderQuoteSlot("Bitcoin", null));
     }catch(e2){
       console.error("[시장 지표 · bitcoin] Twelve Data 대체도 실패:", e2);
     }
@@ -1101,7 +1101,7 @@ function renderPlaceholders(){
     ...METALS.map((m, i) => `<span id="mkt-metal-${i}">${renderQuoteSlot(m.name, null)}</span>`),
     `<span id="mkt-yh-9">${renderQuoteSlot(YAHOO_GROUP[9].name, null)}</span>`,
     `<span id="mkt-yh-10">${renderQuoteSlot(YAHOO_GROUP[10].name, null)}</span>`,
-    `<span id="mkt-btc">${renderQuoteSlot("bitcoin", null)}</span>`,
+    `<span id="mkt-btc">${renderQuoteSlot("Bitcoin", null)}</span>`,
   ];
   document.getElementById("marketSidebar").innerHTML = items.join("");
 }
