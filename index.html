@@ -21,13 +21,13 @@
   body{
     margin:0; background:var(--bg); color:var(--ink);
     font-family:'IBM Plex Mono', monospace;
-    padding-left:130px; /* 왼쪽 시장지표 사이드바 자리 확보 */
+    padding-left:140px; /* 왼쪽 시장지표 사이드바 자리 확보 */
   }
   h1,h2,.serif{font-family:'Noto Serif KR', serif;}
 
   /* ---- 왼쪽 고정 시장지표 사이드바 (세로 방향, 항목 간 간격 최소) ---- */
   #marketSidebar{
-    position:fixed; left:0; top:0; bottom:0; width:130px;
+    position:fixed; left:0; top:0; bottom:0; width:140px;
     background:var(--panel); border-right:1px solid var(--line);
     overflow-y:auto; overflow-x:hidden; padding:10px 8px;
     display:flex; flex-direction:column; gap:1px;
@@ -36,8 +36,8 @@
   #marketSidebar::-webkit-scrollbar{ width:4px; }
   #marketSidebar .mkt{ padding:1px 0; }
   @media (max-width:480px){
-    body{ padding-left:92px; }
-    #marketSidebar{ width:92px; padding:8px 5px; }
+    body{ padding-left:102px; }
+    #marketSidebar{ width:102px; padding:8px 5px; }
     #marketSidebar .mkt{ font-size:9.5px !important; }
   }
 
@@ -51,9 +51,7 @@
   }
   .tape-row + .tape-row{ border-top:1px solid var(--line); }
 
-  .mkt{ display:flex; flex-direction:column; font-size:11px !important; white-space:nowrap; line-height:1.35; }
-  .mkt .mkt-row1{ display:flex; align-items:baseline; gap:4px; }
-  .mkt .mkt-row2{ display:flex; align-items:baseline; }
+  .mkt{ display:flex; align-items:baseline; gap:4px; font-size:11px !important; white-space:nowrap; }
   .mkt .mkt-name{ color:var(--mute); }
   .mkt .mkt-val{ color:var(--ink); font-weight:600; }
   .mkt .mkt-chg.up{ color:var(--up); }
@@ -894,18 +892,20 @@ function paintSlot(id, html){
 // 공통 렌더러: 이름/값/등락률. isDollar면 $ 표시, isFallback이면 끝에 흐린 "." 표시 (Twelve Data로 대체됐다는 표시)
 function renderQuoteSlot(name, price, pct, opts = {}){
   if(price == null || isNaN(price)){
-    return `<span class="mkt"><span class="mkt-row1"><span class="mkt-name">${name}</span><span class="mkt-val">-</span></span></span>`;
+    return `<span class="mkt"><span class="mkt-name">${name}</span><span class="mkt-val">-</span></span>`;
   }
   const sign = pct > 0 ? "▲" : pct < 0 ? "▼" : "-";
   const cls = pct > 0 ? "up" : pct < 0 ? "down" : "";
   const prefix = opts.isDollar ? "$" : "";
-  const valStr = prefix + price.toLocaleString(opts.isDollar ? "en-US" : "ko-KR", { maximumFractionDigits: 2 });
+  const digits = opts.decimals != null ? opts.decimals : 2;
+  const valStr = prefix + price.toLocaleString(opts.isDollar ? "en-US" : "ko-KR", { maximumFractionDigits: digits });
   // toFixed(2)로 자리를 맞춘 뒤, parseFloat로 끝의 불필요한 0을 제거 (1.20 → 1.2, 1.00 → 1)
   const pctStr = (pct == null || isNaN(pct)) ? "" : sign + parseFloat(Math.abs(pct).toFixed(2)) + "%";
   const dot = opts.isFallback ? `<span class="mkt-dot">.</span>` : "";
   return `<span class="mkt">
-    <span class="mkt-row1"><span class="mkt-name">${name}</span><span class="mkt-val">${valStr}</span></span>
-    <span class="mkt-row2"><span class="mkt-chg ${cls}">${pctStr}</span>${dot}</span>
+    <span class="mkt-name">${name}</span>
+    <span class="mkt-val">${valStr}</span>
+    <span class="mkt-chg ${cls}">${pctStr}</span>${dot}
   </span>`;
 }
 
@@ -922,17 +922,17 @@ async function fetchTwelveDataFallback(tdSymbol){
 // ==== 1번째 줄 + 유가·알루미늄·천연가스: Yahoo Finance 우선, 실패시 Twelve Data ====
 // 美10Y(^TNX)는 야후 특성상 실제 수익률의 10배로 나와서 표시할 때 10으로 나눔.
 const YAHOO_GROUP = [
-  { name: "코스피",     ysym: "^KS11", tdSym: "KS11" },
-  { name: "코스닥",     ysym: "^KQ11", tdSym: "KQ11" },
-  { name: "나스닥",     ysym: "^IXIC", tdSym: "IXIC" },
-  { name: "나스닥선물", ysym: "NQ=F",  tdSym: "NQ" },
-  { name: "S&P",       ysym: "^GSPC", tdSym: "SPX" },
-  { name: "반도체지수", ysym: "^SOX",  tdSym: "SOX" },
-  { name: "美10Y",      ysym: "^TNX",  tdSym: "US10Y", divide10: true },
-  { name: "WTI",       ysym: "CL=F",  tdSym: "WTI/USD",     isDollar: true },
-  { name: "브렌트유",   ysym: "BZ=F",  tdSym: "BRENT/USD",   isDollar: true },
-  { name: "알루미늄",   ysym: "ALI=F", tdSym: "ALUMINUM/USD",isDollar: true },
-  { name: "천연가스",   ysym: "NG=F",  tdSym: "NATGAS/USD",  isDollar: true },
+  { name: "코스피",   ysym: "^KS11", tdSym: "KS11", decimals: 0 },
+  { name: "코스닥",   ysym: "^KQ11", tdSym: "KQ11", decimals: 0 },
+  { name: "나스닥",   ysym: "^IXIC", tdSym: "IXIC", decimals: 0 },
+  { name: "나선",     ysym: "NQ=F",  tdSym: "NQ",   decimals: 0 },
+  { name: "S&P",     ysym: "^GSPC", tdSym: "SPX",  decimals: 0 },
+  { name: "반도체",   ysym: "^SOX",  tdSym: "SOX",  decimals: 0 },
+  { name: "美10Y",    ysym: "^TNX",  tdSym: "US10Y", divide10: true },
+  { name: "WTI",     ysym: "CL=F",  tdSym: "WTI/USD",      isDollar: true, decimals: 0 },
+  { name: "브렌트유", ysym: "BZ=F",  tdSym: "BRENT/USD",    isDollar: true, decimals: 0 },
+  { name: "알미늄",   ysym: "ALI=F", tdSym: "ALUMINUM/USD", isDollar: true, decimals: 0 },
+  { name: "천연gas",  ysym: "NG=F",  tdSym: "NATGAS/USD",   isDollar: true },
 ];
 
 async function fetchYahooQuote(ticker){
@@ -957,13 +957,13 @@ async function updateYahooGroup(){
       const { price, prevClose } = await fetchYahooQuote(m.ysym);
       const dispPrice = m.divide10 ? price / 10 : price;
       const pct = ((price - prevClose) / prevClose) * 100;
-      paintSlot(slotId, renderQuoteSlot(m.name, dispPrice, pct, { isDollar: m.isDollar }));
+      paintSlot(slotId, renderQuoteSlot(m.name, dispPrice, pct, { isDollar: m.isDollar, decimals: m.decimals }));
     }catch(e){
       console.error(`[시장 지표 · ${m.name}] Yahoo 실패, Twelve Data로 대체 시도:`, e);
       try{
         const q = await fetchTwelveDataFallback(m.tdSym);
         paintSlot(slotId, q
-          ? renderQuoteSlot(m.name, q.price, q.pct, { isDollar: m.isDollar, isFallback: true })
+          ? renderQuoteSlot(m.name, q.price, q.pct, { isDollar: m.isDollar, isFallback: true, decimals: m.decimals })
           : renderQuoteSlot(m.name, null));
       }catch(e2){
         console.error(`[시장 지표 · ${m.name}] Twelve Data 대체도 실패:`, e2);
@@ -975,7 +975,7 @@ async function updateYahooGroup(){
 
 // ==== 금·은·구리: ① Yahoo Finance ② gold-api.com ③ Twelve Data 순으로 시도 ====
 const METALS = [
-  { name: "금",   ysym: "GC=F", giSym: "XAU", tdSym: "XAU/USD" },
+  { name: "금",   ysym: "GC=F", giSym: "XAU", tdSym: "XAU/USD", decimals: 0 },
   { name: "은",   ysym: "SI=F", giSym: "XAG", tdSym: "XAG/USD" },
   { name: "구리", ysym: "HG=F", giSym: "HG",  tdSym: "COPPER/USD" },
 ];
@@ -990,7 +990,7 @@ async function updateMetals(){
     try{
       const { price, prevClose } = await fetchYahooQuote(m.ysym);
       const pct = ((price - prevClose) / prevClose) * 100;
-      paintSlot(slotId, renderQuoteSlot(m.name, price, pct, { isDollar: true }));
+      paintSlot(slotId, renderQuoteSlot(m.name, price, pct, { isDollar: true, decimals: m.decimals }));
       continue;
     }catch(e){
       console.error(`[시장 지표 · ${m.name}] Yahoo 실패, gold-api로 대체 시도:`, e);
@@ -1006,7 +1006,7 @@ async function updateMetals(){
       const prev = metalsPrevPrice[m.giSym];
       const pct = prev ? ((price - prev) / prev) * 100 : null;
       metalsPrevPrice[m.giSym] = price;
-      paintSlot(slotId, renderQuoteSlot(m.name, price, pct, { isDollar: true }));
+      paintSlot(slotId, renderQuoteSlot(m.name, price, pct, { isDollar: true, decimals: m.decimals }));
       continue;
     }catch(e){
       console.error(`[시장 지표 · ${m.name}] gold-api도 실패, Twelve Data로 대체 시도:`, e);
@@ -1016,7 +1016,7 @@ async function updateMetals(){
     try{
       const q = await fetchTwelveDataFallback(m.tdSym);
       paintSlot(slotId, q
-        ? renderQuoteSlot(m.name, q.price, q.pct, { isDollar: true, isFallback: true })
+        ? renderQuoteSlot(m.name, q.price, q.pct, { isDollar: true, isFallback: true, decimals: m.decimals })
         : renderQuoteSlot(m.name, null));
     }catch(e2){
       console.error(`[시장 지표 · ${m.name}] Twelve Data 대체도 실패:`, e2);
@@ -1033,16 +1033,16 @@ async function updateBitcoin(){
     const price = data?.bitcoin?.usd;
     const pct = data?.bitcoin?.usd_24h_change;
     if(price == null) throw new Error("가격 없음");
-    paintSlot("mkt-btc", renderQuoteSlot("비트코인", price, pct, { isDollar: true }));
+    paintSlot("mkt-btc", renderQuoteSlot("bitcoin", price, pct, { isDollar: true }));
   }catch(e){
-    console.error("[시장 지표 · 비트코인] CoinGecko 실패, Twelve Data로 대체 시도:", e);
+    console.error("[시장 지표 · bitcoin] CoinGecko 실패, Twelve Data로 대체 시도:", e);
     try{
       const q = await fetchTwelveDataFallback("BTC/USD");
       paintSlot("mkt-btc", q
-        ? renderQuoteSlot("비트코인", q.price, q.pct, { isDollar: true, isFallback: true })
-        : renderQuoteSlot("비트코인", null));
+        ? renderQuoteSlot("bitcoin", q.price, q.pct, { isDollar: true, isFallback: true })
+        : renderQuoteSlot("bitcoin", null));
     }catch(e2){
-      console.error("[시장 지표 · 비트코인] Twelve Data 대체도 실패:", e2);
+      console.error("[시장 지표 · bitcoin] Twelve Data 대체도 실패:", e2);
     }
   }
 }
@@ -1054,7 +1054,7 @@ async function updateForex(){
   try{
     const { price, prevClose } = await fetchYahooQuote("KRW=X");
     const pct = ((price - prevClose) / prevClose) * 100;
-    paintSlot("mkt-forex", renderQuoteSlot("환율", price, pct));
+    paintSlot("mkt-forex", renderQuoteSlot("환율", price, pct, { decimals: 0 }));
     return;
   }catch(e){
     console.error("[시장 지표 · 환율] Yahoo 실패, Frankfurter로 대체 시도:", e);
@@ -1070,7 +1070,7 @@ async function updateForex(){
     const prev = forexPrevRate;
     const pct = prev ? ((rate - prev) / prev) * 100 : null;
     forexPrevRate = rate;
-    paintSlot("mkt-forex", renderQuoteSlot("환율", rate, pct));
+    paintSlot("mkt-forex", renderQuoteSlot("환율", rate, pct, { decimals: 0 }));
     return;
   }catch(e){
     console.error("[시장 지표 · 환율] Frankfurter도 실패, Twelve Data로 대체 시도:", e);
@@ -1080,7 +1080,7 @@ async function updateForex(){
   try{
     const q = await fetchTwelveDataFallback("USD/KRW");
     paintSlot("mkt-forex", q
-      ? renderQuoteSlot("환율", q.price, q.pct, { isFallback: true })
+      ? renderQuoteSlot("환율", q.price, q.pct, { isFallback: true, decimals: 0 })
       : renderQuoteSlot("환율", null));
   }catch(e2){
     console.error("[시장 지표 · 환율] Twelve Data 대체도 실패:", e2);
@@ -1088,20 +1088,20 @@ async function updateForex(){
 }
 
 // ==== 초기 배치: 페이지 열리자마자 순서대로 이름부터 다 표시 (왼쪽 사이드바에 세로로 한 줄씩) ====
-// 순서: 코스피·코스닥·나스닥·나스닥선물·S&P·반도체지수·환율·美10Y·WTI·브렌트유·금·은·구리·알루미늄·천연가스·비트코인
+// 순서: 코스피·코스닥·나스닥·나선·S&P·반도체·환율·美10Y·WTI·브렌트유·금·은·구리·알미늄·천연gas·bitcoin
 function renderPlaceholders(){
   const items = [
     `<span id="mkt-yh-0">${renderQuoteSlot(YAHOO_GROUP[0].name, null)}</span>`, // 코스피
     `<span id="mkt-yh-1">${renderQuoteSlot(YAHOO_GROUP[1].name, null)}</span>`, // 코스닥
     ...YAHOO_GROUP.slice(2, 6).map((m, i) => `<span id="mkt-yh-${i+2}">${renderQuoteSlot(m.name, null)}</span>`),
     `<span id="mkt-forex">${renderQuoteSlot("환율", null)}</span>`,
-    `<span id="mkt-yh-6">${renderQuoteSlot("美10Y", null)}</span>`,
-    `<span id="mkt-yh-7">${renderQuoteSlot("WTI", null)}</span>`,
-    `<span id="mkt-yh-8">${renderQuoteSlot("브렌트유", null)}</span>`,
+    `<span id="mkt-yh-6">${renderQuoteSlot(YAHOO_GROUP[6].name, null)}</span>`,
+    `<span id="mkt-yh-7">${renderQuoteSlot(YAHOO_GROUP[7].name, null)}</span>`,
+    `<span id="mkt-yh-8">${renderQuoteSlot(YAHOO_GROUP[8].name, null)}</span>`,
     ...METALS.map((m, i) => `<span id="mkt-metal-${i}">${renderQuoteSlot(m.name, null)}</span>`),
-    `<span id="mkt-yh-9">${renderQuoteSlot("알루미늄", null)}</span>`,
-    `<span id="mkt-yh-10">${renderQuoteSlot("천연가스", null)}</span>`,
-    `<span id="mkt-btc">${renderQuoteSlot("비트코인", null)}</span>`,
+    `<span id="mkt-yh-9">${renderQuoteSlot(YAHOO_GROUP[9].name, null)}</span>`,
+    `<span id="mkt-yh-10">${renderQuoteSlot(YAHOO_GROUP[10].name, null)}</span>`,
+    `<span id="mkt-btc">${renderQuoteSlot("bitcoin", null)}</span>`,
   ];
   document.getElementById("marketSidebar").innerHTML = items.join("");
 }
