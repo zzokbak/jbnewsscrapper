@@ -118,6 +118,7 @@
   .item a.title{color:var(--ink); text-decoration:none; font-size:15.5px; line-height:1.5; font-weight:500;}
   .item a.title:hover{color:var(--amber); text-decoration:underline;}
   .item .src{color:var(--mute); font-size:11.5px; margin-top:5px;}
+  .item .src .paid-tag{color:var(--amber);}
   .copy-btn{
     background:none; border:1px solid var(--line); color:var(--mute); cursor:pointer;
     width:30px; height:30px; border-radius:2px; display:flex; align-items:center; justify-content:center;
@@ -368,6 +369,7 @@ const NOISE_SINGLE_TERMS = [
   "오늘의 주요일정","주요일정",
   "전세","월세",
   "당구","축구","배구","야구","농구","스포츠","골프","테니스","올림픽","월드컵","kbo","kbl","kfa",
+  "klpga","kpga","lpga","pga","epl","nba","nfl","nhl","ufc","atp","wta","uefa","fifa","isu",
   "메이저리그","구단","npb","mlb","투수","tvis","일간스포츠",
   "권오용","기자가만난세상","기자가 만난 세상","정치부","예능","문화부","칼럼",
   "톱스타뉴스","공공기관","헬스조선","에듀","mhn포토",
@@ -745,12 +747,20 @@ function render(){
   const copyIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
   const checkIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
+  // 한국경제 "투자 인사이트" 시리즈는 유료 구독 기사라 본문을 다 볼 수 없어서 표시해줌
+  function srcLabel(i){
+    const isPaidHankyung = i.source === "한국경제" &&
+      ((i.title || "").includes("투자 인사이트") || (i.description || "").includes("투자 인사이트"));
+    const base = i.press || i.source;
+    return isPaidHankyung ? `${base} <span class="paid-tag">(유료기사)</span>` : base;
+  }
+
   list.innerHTML = renderedItems.map((i, idx) => `
     <div class="item ${i.isBreaking ? 'breaking' : ''}">
       <div class="time">${i.pubDate.toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"})}<br>${i.pubDate.toLocaleDateString("ko-KR",{month:"2-digit",day:"2-digit"})}</div>
       <div>
         <a class="title" href="${i.link}" target="_blank" rel="noopener noreferrer" data-idx="${idx}">${i.title}</a>
-        <div class="src">${i.press || i.source}</div>
+        <div class="src">${srcLabel(i)}</div>
       </div>
       <button class="copy-btn" data-idx="${idx}" title="링크 복사">${copyIcon}</button>
     </div>
