@@ -143,19 +143,29 @@
   #previewPanel{
     position:fixed; right:24px; bottom:24px; width:min(440px, 90vw); max-height:60vh;
     background:var(--panel); border:1px solid var(--amber); border-radius:6px;
-    box-shadow:0 12px 40px rgba(0,0,0,.5); padding:18px 20px; overflow:hidden;
+    box-shadow:0 12px 40px rgba(0,0,0,.5); overflow:hidden;
+    display:flex; flex-direction:column;
     opacity:0; pointer-events:none; transform:translateY(10px);
     transition:opacity .15s ease, transform .15s ease; z-index:999;
   }
   #previewPanel.show{ opacity:1; transform:translateY(0); pointer-events:auto; }
-  #previewPanel .pv-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+  #previewPanel .pv-header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 16px 0; flex:0 0 auto;
+  }
   #previewPanel .pv-src{ color:var(--amber); font-size:11px; font-weight:600; }
-  #previewPanel .pv-copy-btn{
+  #previewPanel .pv-scroll{ flex:1 1 auto; overflow-y:auto; padding:8px 16px 4px; }
+  #previewPanel .pv-footer{
+    flex:0 0 auto; padding:8px 14px; display:flex; justify-content:flex-end;
+    border-top:1px solid var(--line);
+  }
+  #previewPanel .pv-close-btn, #previewPanel .pv-copy-btn{
     background:none; border:1px solid var(--line); color:var(--mute); cursor:pointer;
     width:26px; height:26px; border-radius:2px; display:flex; align-items:center; justify-content:center; padding:0;
   }
+  #previewPanel .pv-close-btn:hover{ border-color:var(--up); color:var(--up); }
   #previewPanel .pv-copy-btn:hover{ border-color:var(--amber); color:var(--amber); }
-  #previewPanel .pv-copy-btn svg{ width:13px; height:13px; }
+  #previewPanel .pv-close-btn svg, #previewPanel .pv-copy-btn svg{ width:13px; height:13px; }
   #previewPanel .pv-title{ font-family:'Noto Serif KR', serif; font-size:16px; font-weight:700; margin-bottom:10px; line-height:1.4; }
   #previewPanel .pv-body{ color:var(--ink); font-size:13px; line-height:1.7; white-space:pre-line; }
   #previewPanel .pv-loading{ color:var(--mute); font-size:12.5px; }
@@ -328,13 +338,13 @@ function hasMarketContext(text){
 }
 
 // 본문에서 증시 관련 핵심 문장만 추려서 짧게 함축 (스크롤 없이 패널 안에 들어가도록)
-function condenseMarketText(text, maxLen = 220){
+function condenseMarketText(text){
   if(!text) return text;
   const relevantTerms = [...STRONG_MARKET_KEYWORDS, ...CONTEXT_REQUIRED_KEYWORDS, ...MARKET_CONTEXT_TERMS];
   const sentences = text.split(/(?<=[.!?다요])\s+/).map(s => s.trim()).filter(Boolean);
   const relevant = sentences.filter(s => relevantTerms.some(k => s.includes(k)));
-  const picked = (relevant.length ? relevant : sentences).slice(0, 3).join(" ");
-  return picked.length > maxLen ? picked.slice(0, maxLen).trim() + "…" : picked;
+  // 증시 관련 문장이 있으면 그것만, 없으면 전체 원문을 그대로 반환 (끝을 자르지 않음)
+  return relevant.length ? relevant.join(" ") : text;
 }
 
 // 제목+본문을 합쳐서 봐야 "삼성"은 제목에, "계약"은 본문에 있는 경우도 잡을 수 있음
@@ -381,6 +391,7 @@ const NOISE_SINGLE_TERMS = [
   "권오용","기자가만난세상","기자가 만난 세상","정치부","예능","문화부","칼럼",
   "톱스타뉴스","공공기관","헬스조선","에듀","mhn포토",
   "산불","하이틴","유튜브 채널","공간생활","정리수납","교육생","모집","실습",
+  "미표시","장애인","종합복지관",
   "인턴 기자","인턴기자","오피니언","기자수첩","[기고]",
   "한부모가정","문화체험","초보",
   "공주","왕자","여왕","국왕","황제","왕실","국빈","정상회담",
@@ -394,6 +405,7 @@ const NOISE_AND_GROUPS = [
   ["개설","방법"],
   ["거래","방법"],
   ["계좌","가입"],
+  ["알레르기","식품의약처"],
 ];
 
 function isExcludedNoise(item){
@@ -791,6 +803,7 @@ function render(){
   });
 
   const preview = document.getElementById("previewPanel");
+  const closeIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
   let hoverToken = 0; // 빠르게 여러 기사를 오갈 때 오래된 번역 응답이 늦게 도착해 덮어쓰는 것 방지
   let currentPreviewData = null; // 복사 버튼이 참조할 현재 말풍선 내용
 
@@ -823,13 +836,21 @@ function render(){
         preview.innerHTML = `
           <div class="pv-header">
             <div class="pv-src">${item.source}${item.lang === "en" ? " · 번역됨" : ""}</div>
+            <button class="pv-close-btn" id="pvCloseBtn" title="닫기">${closeIcon}</button>
+          </div>
+          <div class="pv-scroll">
+            <div class="pv-title">${item.title}</div>
+            <div class="pv-body">${bodyText}</div>
+          </div>
+          <div class="pv-footer">
             <button class="pv-copy-btn" id="pvCopyBtn" title="말풍선 내용 복사">${copyIcon}</button>
           </div>
-          <div class="pv-title">${item.title}</div>
-          <div class="pv-body">${bodyText}</div>
         `;
         preview.classList.add("show");
         document.getElementById("pvCopyBtn").addEventListener("click", copyPreviewContent);
+        document.getElementById("pvCloseBtn").addEventListener("click", () => {
+          preview.classList.remove("show");
+        });
       };
 
       if(!item.description){
