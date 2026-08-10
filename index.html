@@ -147,8 +147,15 @@
     opacity:0; pointer-events:none; transform:translateY(10px);
     transition:opacity .15s ease, transform .15s ease; z-index:999;
   }
-  #previewPanel.show{ opacity:1; transform:translateY(0); }
-  #previewPanel .pv-src{ color:var(--amber); font-size:11px; font-weight:600; margin-bottom:6px; }
+  #previewPanel.show{ opacity:1; transform:translateY(0); pointer-events:auto; }
+  #previewPanel .pv-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+  #previewPanel .pv-src{ color:var(--amber); font-size:11px; font-weight:600; }
+  #previewPanel .pv-copy-btn{
+    background:none; border:1px solid var(--line); color:var(--mute); cursor:pointer;
+    width:26px; height:26px; border-radius:2px; display:flex; align-items:center; justify-content:center; padding:0;
+  }
+  #previewPanel .pv-copy-btn:hover{ border-color:var(--amber); color:var(--amber); }
+  #previewPanel .pv-copy-btn svg{ width:13px; height:13px; }
   #previewPanel .pv-title{ font-family:'Noto Serif KR', serif; font-size:16px; font-weight:700; margin-bottom:10px; line-height:1.4; }
   #previewPanel .pv-body{ color:var(--ink); font-size:13px; line-height:1.7; white-space:pre-line; }
   #previewPanel .pv-loading{ color:var(--mute); font-size:12.5px; }
@@ -785,6 +792,24 @@ function render(){
 
   const preview = document.getElementById("previewPanel");
   let hoverToken = 0; // 빠르게 여러 기사를 오갈 때 오래된 번역 응답이 늦게 도착해 덮어쓰는 것 방지
+  let currentPreviewData = null; // 복사 버튼이 참조할 현재 말풍선 내용
+
+  function copyPreviewContent(){
+    if(!currentPreviewData) return;
+    const text = `${currentPreviewData.title} -${currentPreviewData.src}. ${currentPreviewData.body}`;
+    const finish = () => {
+      const btn = document.getElementById("pvCopyBtn");
+      if(!btn) return;
+      btn.innerHTML = checkIcon;
+      setTimeout(()=>{ if(document.getElementById("pvCopyBtn")) document.getElementById("pvCopyBtn").innerHTML = copyIcon; }, 1200);
+    };
+    navigator.clipboard.writeText(text).then(finish).catch(()=>{
+      const ta = document.createElement("textarea");
+      ta.value = text; document.body.appendChild(ta);
+      ta.select(); document.execCommand("copy"); document.body.removeChild(ta);
+      finish();
+    });
+  }
 
   list.querySelectorAll("a.title").forEach(el=>{
     el.addEventListener("mouseenter", async ()=>{
@@ -792,14 +817,19 @@ function render(){
       const item = renderedItems[Number(el.dataset.idx)];
       if(!item) return;
 
-      const renderPanel = (bodyHtml) => {
+      const renderPanel = (bodyText) => {
         if(myToken !== hoverToken) return; // 이미 다른 기사로 넘어간 경우 무시
+        currentPreviewData = { title: item.title, src: item.press || item.source, body: bodyText.replace(/<[^>]*>/g, "") };
         preview.innerHTML = `
-          <div class="pv-src">${item.source}${item.lang === "en" ? " · 번역됨" : ""}</div>
+          <div class="pv-header">
+            <div class="pv-src">${item.source}${item.lang === "en" ? " · 번역됨" : ""}</div>
+            <button class="pv-copy-btn" id="pvCopyBtn" title="말풍선 내용 복사">${copyIcon}</button>
+          </div>
           <div class="pv-title">${item.title}</div>
-          <div class="pv-body">${bodyHtml}</div>
+          <div class="pv-body">${bodyText}</div>
         `;
         preview.classList.add("show");
+        document.getElementById("pvCopyBtn").addEventListener("click", copyPreviewContent);
       };
 
       if(!item.description){
@@ -816,9 +846,9 @@ function render(){
       }
     });
 
+    // 커서가 제목에서 떨어져도 말풍선은 사라지지 않고 마지막 내용을 계속 보여줌 (진행 중이던 번역 요청만 취소)
     el.addEventListener("mouseleave", ()=>{
-      hoverToken++; // 진행 중이던 번역 결과 무시
-      preview.classList.remove("show");
+      hoverToken++;
     });
   });
 }
@@ -940,7 +970,7 @@ const YAHOO_GROUP = [
   { name: "나선",     ysym: "NQ=F",  tdSym: "NQ",   decimals: 0 },
   { name: "S&P",     ysym: "^GSPC", tdSym: "SPX",  decimals: 0 },
   { name: "반도체",   ysym: "^SOX",  tdSym: "SOX",  decimals: 0 },
-  { name: "美10Y",    ysym: "^TNX",  tdSym: "US10Y", divide10: true },
+  { name: "美10Y국채", ysym: "^TNX",  tdSym: "US10Y", divide10: true },
   { name: "WTI",     ysym: "CL=F",  tdSym: "WTI/USD",      isDollar: true, decimals: 0 },
   { name: "브렌트유", ysym: "BZ=F",  tdSym: "BRENT/USD",    isDollar: true, decimals: 0 },
   { name: "알미늄",   ysym: "ALI=F", tdSym: "ALUMINUM/USD", isDollar: true, decimals: 0 },
