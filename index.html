@@ -284,6 +284,8 @@ const USE_PORTAL_SEARCH = true;
 const REFRESH_MS = 5 * 60 * 1000; // 5분 (3명이 각자 브라우저를 켜두는 걸 감안해 네이버 무료 한도의 약 60%만 쓰도록 여유있게 설정)
 const MAX_ITEMS = 160;
 const PER_SOURCE_MAX = 20; // 탭(언론사)마다 최대 20개까지만
+const PER_SOURCE_MAX_OVERRIDES = { "Bloomberg": 10 }; // 특정 언론사만 다르게 제한하고 싶을 때
+function getSourceMax(name){ return PER_SOURCE_MAX_OVERRIDES[name] || PER_SOURCE_MAX; }
 
 // 1순위: 본인 소유의 Cloudflare Worker 프록시
 const MY_WORKER = "https://stock-news.zzokbak.workers.dev";
@@ -488,7 +490,11 @@ async function translateToKo(text){
   try{
     const res = await fetch("https://api.mymemory.translated.net/get?q=" + encodeURIComponent(chunk) + "&langpair=en|ko");
     const data = await res.json();
-    const translated = data?.responseData?.translatedText;
+    let translated = data?.responseData?.translatedText;
+    // MyMemory는 하루 무료 한도를 넘으면 에러 코드 대신 영어 경고문을 번역 결과인 것처럼 끼워 보낸다 — 감지해서 대체
+    if(translated && /MYMEMORY WARNING|LIMIT.*EXCEEDED|USED ALL AVAILABLE FREE TRANSLATIONS/i.test(translated)){
+      translated = "(무료 번역 이용 횟수를 오늘 다 써서 번역을 불러오지 못했습니다 — 원문 그대로 표시합니다)\n\n" + text;
+    }
     if(translated){ translateCache[text] = translated; return translated; }
   }catch(e){ /* 번역 실패 시 원문으로 대체 */ }
   return text;
@@ -641,12 +647,18 @@ function renderNaverQuota(used){
 fetchNaverUsage().then(renderNaverQuota);
 
 let isLoadingNews = false;
+let lastBloombergFetch = 0;
+const BLOOMBERG_INTERVAL_MS = 60 * 60 * 1000; // 블룸버그는 1시간에 한 번만 새로 검색 (기존에 모아둔 건 계속 남아있음)
+
 async function loadAll(){
   if(isLoadingNews) return; // 이전 주기가 아직 안 끝났으면 겹쳐서 실행하지 않음
   isLoadingNews = true;
   try{
     document.getElementById("lastUpdated").textContent = "마지막 갱신 — 불러오는 중…";
-    const allSources = [...SOURCES.map(s => ({...s, lang:"ko"})), ...SOURCES_EN.map(s => ({...s, lang:"en"}))];
+    const dueForBloomberg = (Date.now() - lastBloombergFetch) >= BLOOMBERG_INTERVAL_MS;
+    const allSources = [...SOURCES.map(s => ({...s, lang:"ko"})), ...SOURCES_EN.map(s => ({...s, lang:"en"}))]
+      .filter(s => s.name !== "Bloomberg" || dueForBloomberg); // 블룸버그는 때가 안 됐으면 이번 주기에서 통째로 제외
+    if(dueForBloomberg) lastBloombergFetch = Date.now();
     const fetchTasks = allSources.map(s => s.lang === "en" ? fetchSourceEn(s) : fetchSource(s));
 
     // 네이버·다음 포털 검색 (Worker에 API 키가 등록돼 있을 때만 시도)
@@ -701,12 +713,12 @@ async function loadAll(){
       deduped.push(item);
     }
 
-    // 탭(언론사)마다 최대 PER_SOURCE_MAX개까지만 (네이버가 압도적으로 많이 잡히는 것 방지)
+    // 탭(언론사)마다 최대 개수까지만 (네이버가 압도적으로 많이 잡히는 것 방지, 블룸버그는 10개로 예외)
     const sourceCounts = {};
     const capped = [];
     for(const item of deduped){
       const c = sourceCounts[item.source] || 0;
-      if(c >= PER_SOURCE_MAX) continue;
+      if(c >= getSourceMax(item.source)) continue;
       sourceCounts[item.source] = c + 1;
       capped.push(item);
     }
