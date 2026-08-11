@@ -393,7 +393,7 @@ const NOISE_SINGLE_TERMS = [
   "권오용","기자가만난세상","기자가 만난 세상","정치부","예능","문화부","칼럼",
   "톱스타뉴스","공공기관","헬스조선","에듀","mhn포토",
   "산불","하이틴","유튜브 채널","공간생활","정리수납","교육생","모집","실습",
-  "미표시","장애인","종합복지관",
+  "미표시","장애인","종합복지관","[nc인터뷰]",
   "인턴 기자","인턴기자","오피니언","기자수첩","[기고]",
   "한부모가정","문화체험","초보",
   "공주","왕자","여왕","국왕","황제","왕실","국빈","정상회담",
@@ -493,7 +493,7 @@ async function translateToKo(text){
     let translated = data?.responseData?.translatedText;
     // MyMemory는 하루 무료 한도를 넘으면 에러 코드 대신 영어 경고문을 번역 결과인 것처럼 끼워 보낸다 — 감지해서 대체
     if(translated && /MYMEMORY WARNING|LIMIT.*EXCEEDED|USED ALL AVAILABLE FREE TRANSLATIONS/i.test(translated)){
-      translated = "(무료 번역 이용 횟수를 오늘 다 써서 번역을 불러오지 못했습니다 — 원문 그대로 표시합니다)\n\n" + text;
+      translated = "(무료번역 횟수초과)\n\n" + text;
     }
     if(translated){ translateCache[text] = translated; return translated; }
   }catch(e){ /* 번역 실패 시 원문으로 대체 */ }
@@ -844,7 +844,7 @@ function render(){
 
       const renderPanel = (bodyText) => {
         if(myToken !== hoverToken) return; // 이미 다른 기사로 넘어간 경우 무시
-        currentPreviewData = { title: item.title, src: item.press || item.source, body: bodyText.replace(/<[^>]*>/g, "") };
+        currentPreviewData = { title: item.title, src: item.press || item.source, body: bodyText.replace(/<[^>]*>/g, "").replace(/^\(무료번역 횟수초과\)\s*/, "") };
         preview.innerHTML = `
           <div class="pv-header">
             <div class="pv-src">${item.source}${item.lang === "en" ? " · 번역됨" : ""}</div>
