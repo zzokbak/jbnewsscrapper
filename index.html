@@ -1195,6 +1195,13 @@ setInterval(updateForex, 10 * 1000); // 환율: 10초마다 (최대한 빠르게
 updateBitcoin();
 setInterval(updateBitcoin, 15 * 1000); // 비트코인: 15초마다
 
+// ---- ESC 키로 미리보기 말풍선 닫기 ----
+window.addEventListener("keydown", (e) => {
+  if(e.key !== "Escape") return;
+  const preview = document.getElementById("previewPanel");
+  if(preview) preview.classList.remove("show");
+});
+
 // ---- F5 새로고침에 5초 딜레이 적용 (버튼은 없앰) ----
 let lastLoadTime = 0;
 window.addEventListener("keydown", (e) => {
