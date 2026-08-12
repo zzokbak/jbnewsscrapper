@@ -122,11 +122,17 @@
   .copy-btn{
     background:none; border:1px solid var(--line); color:var(--mute); cursor:pointer;
     width:30px; height:30px; border-radius:2px; display:flex; align-items:center; justify-content:center;
-    padding:0; margin-top:2px;
+    padding:0;
   }
   .copy-btn:hover{border-color:var(--amber); color:var(--amber);}
   .copy-btn.copied{border-color:var(--up); color:var(--up);}
   .copy-btn svg{width:15px; height:15px;}
+  .item-actions{display:flex; align-items:center; gap:6px; margin-top:2px;}
+  .premium-badge{
+    display:inline-flex; align-items:center; justify-content:center;
+    border:1px solid #A78BFA; color:#A78BFA; font-size:10px; font-weight:600;
+    border-radius:2px; padding:5px 6px; line-height:1; white-space:nowrap;
+  }
 
   /* 제목에 '속보'가 포함된 기사는 연분홍 배경으로 강조 */
   .item.breaking{
@@ -211,7 +217,7 @@
 // 관리자만 수정하는 검색 키워드 (화면에는 표시되지 않음, 기사 필터링에만 사용)
 
 // 이 자체로 이미 증시 관련이라 확실한 키워드 — 이것만 있으면 바로 수집
-const STRONG_MARKET_KEYWORDS = ["실적발표","리밸런싱","주식","주가","증권","애널리스트","월가","CXMT","창신메모리","창신 메모리"];
+const STRONG_MARKET_KEYWORDS = ["실적발표","리밸런싱","주식","주가","증권","애널리스트","월가","CXMT","창신메모리","창신 메모리","관리종목"];
 
 // 증시 아닌 곳에서도 자주 쓰이는 애매한 키워드 — 아래 "증시 맥락 단어"가 같이 있을 때만 수집
 // (예: "안드로이드"만 있으면 그냥 스마트폰 뉴스일 수 있어서, "주가"·"상장" 같은 증시 단어가 같이 있어야 통과)
@@ -786,6 +792,12 @@ function render(){
     return isPaidHankyung ? `${base} <span class="paid-tag">(유료기사)</span>` : base;
   }
 
+  // "한경 프리미엄" 유료 기사는 링크복사 버튼 왼쪽에 작은 보라색 "유료" 배지로 표시 (클릭 기능 없음, 단순 문자열 검사라 가벼움)
+  const PREMIUM_RE = /한경\s?프리미엄/;
+  function isHankyungPremium(i){
+    return i.source === "한국경제" && (PREMIUM_RE.test(i.title) || PREMIUM_RE.test(i.description || ""));
+  }
+
   list.innerHTML = renderedItems.map((i, idx) => `
     <div class="item ${i.isBreaking ? 'breaking' : ''}">
       <div class="time">${i.pubDate.toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"})}<br>${i.pubDate.toLocaleDateString("ko-KR",{month:"2-digit",day:"2-digit"})}</div>
@@ -793,7 +805,10 @@ function render(){
         <a class="title" href="${i.link}" target="_blank" rel="noopener noreferrer" data-idx="${idx}">${i.title}</a>
         <div class="src">${srcLabel(i)}</div>
       </div>
-      <button class="copy-btn" data-idx="${idx}" title="링크 복사">${copyIcon}</button>
+      <div class="item-actions">
+        ${isHankyungPremium(i) ? '<span class="premium-badge">유료</span>' : ''}
+        <button class="copy-btn" data-idx="${idx}" title="링크 복사">${copyIcon}</button>
+      </div>
     </div>
   `).join("");
 
@@ -818,6 +833,13 @@ function render(){
   const closeIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
   let hoverToken = 0; // 빠르게 여러 기사를 오갈 때 오래된 번역 응답이 늦게 도착해 덮어쓰는 것 방지
   let currentPreviewData = null; // 복사 버튼이 참조할 현재 말풍선 내용
+  let currentItemLink = null; // 지금 말풍선에 떠 있는 기사의 링크 (닫기 판별용)
+  let dismissedLink = null; // 방금 닫은 기사의 링크 — 이 기사에는 다시 안 뜸
+
+  function dismissPreview(){
+    dismissedLink = currentItemLink;
+    preview.classList.remove("show");
+  }
 
   function copyPreviewContent(){
     if(!currentPreviewData) return;
@@ -838,9 +860,12 @@ function render(){
 
   list.querySelectorAll("a.title").forEach(el=>{
     el.addEventListener("mouseenter", async ()=>{
-      const myToken = ++hoverToken;
       const item = renderedItems[Number(el.dataset.idx)];
       if(!item) return;
+      if(item.link && item.link === dismissedLink) return; // 방금 닫았던 기사면 다시 안 띄움
+
+      const myToken = ++hoverToken;
+      currentItemLink = item.link;
 
       const renderPanel = (bodyText) => {
         if(myToken !== hoverToken) return; // 이미 다른 기사로 넘어간 경우 무시
@@ -860,9 +885,7 @@ function render(){
         `;
         preview.classList.add("show");
         document.getElementById("pvCopyBtn").addEventListener("click", copyPreviewContent);
-        document.getElementById("pvCloseBtn").addEventListener("click", () => {
-          preview.classList.remove("show");
-        });
+        document.getElementById("pvCloseBtn").addEventListener("click", dismissPreview);
       };
 
       if(!item.description){
@@ -884,6 +907,8 @@ function render(){
       hoverToken++;
     });
   });
+
+  window.__dismissPreviewViaEsc = dismissPreview;
 }
 
 function timeAgo(date){
@@ -1198,8 +1223,7 @@ setInterval(updateBitcoin, 15 * 1000); // 비트코인: 15초마다
 // ---- ESC 키로 미리보기 말풍선 닫기 ----
 window.addEventListener("keydown", (e) => {
   if(e.key !== "Escape") return;
-  const preview = document.getElementById("previewPanel");
-  if(preview) preview.classList.remove("show");
+  if(window.__dismissPreviewViaEsc) window.__dismissPreviewViaEsc();
 });
 
 // ---- F5 새로고침에 5초 딜레이 적용 (버튼은 없앰) ----
