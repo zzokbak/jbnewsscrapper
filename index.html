@@ -203,11 +203,13 @@
   <span class="diag" id="diag"></span>
 </div>
 
-<div class="tabs" id="tabs"></div>
+<div id="contentArea">
+  <div class="tabs" id="tabs"></div>
 
-<main>
-  <div id="list"><div class="empty">뉴스를 불러오는 중입니다…</div></div>
-</main>
+  <main>
+    <div id="list"><div class="empty">뉴스를 불러오는 중입니다…</div></div>
+  </main>
+</div>
 
 <footer>이 페이지는 각 언론사가 공개한 RSS 피드를 표시만 합니다. 기사 본문은 원문 링크에서 확인하세요.</footer>
 
@@ -217,7 +219,7 @@
 // 관리자만 수정하는 검색 키워드 (화면에는 표시되지 않음, 기사 필터링에만 사용)
 
 // 이 자체로 이미 증시 관련이라 확실한 키워드 — 이것만 있으면 바로 수집
-const STRONG_MARKET_KEYWORDS = ["실적발표","리밸런싱","주식","주가","증권","애널리스트","월가","CXMT","창신메모리","창신 메모리","관리종목"];
+const STRONG_MARKET_KEYWORDS = ["실적발표","리밸런싱","주식","주가","증권","애널리스트","월가","CXMT","창신메모리","창신 메모리","관리종목","N2 모닝 경제 브리핑"];
 
 // 증시 아닌 곳에서도 자주 쓰이는 애매한 키워드 — 아래 "증시 맥락 단어"가 같이 있을 때만 수집
 // (예: "안드로이드"만 있으면 그냥 스마트폰 뉴스일 수 있어서, "주가"·"상장" 같은 증시 단어가 같이 있어야 통과)
@@ -489,21 +491,75 @@ function stripHtml(html){
 }
 
 const translateCache = {}; // 같은 문장을 여러 번 번역 요청하지 않도록 캐시
+// ---- 번역: 무료 사이트를 여러 개 순서대로 시도 (하나가 한도 초과/실패하면 다음으로) ----
+
+async function tryMyMemory(chunk){
+  const res = await fetch("https://api.mymemory.translated.net/get?q=" + encodeURIComponent(chunk) + "&langpair=en|ko");
+  const data = await res.json();
+  let translated = data?.responseData?.translatedText;
+  // MyMemory는 하루 무료 한도를 넘으면 에러 코드 대신 영어 경고문을 번역 결과인 것처럼 끼워 보낸다 — 감지해서 실패로 처리
+  if(translated && /MYMEMORY WARNING|LIMIT.*EXCEEDED|USED ALL AVAILABLE FREE TRANSLATIONS/i.test(translated)){
+    throw new Error("MyMemory 일일 한도 초과");
+  }
+  if(!translated) throw new Error("MyMemory 응답 없음");
+  return translated;
+}
+
+async function tryGoogleUnofficial(chunk){
+  const target = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ko&dt=t&q=" + encodeURIComponent(chunk);
+  const res = await fetch(MY_WORKER + "/?url=" + encodeURIComponent(target));
+  if(!res.ok) throw new Error("HTTP " + res.status);
+  const data = await res.json();
+  const segments = data?.[0];
+  if(!Array.isArray(segments)) throw new Error("구글(비공식) 응답 형식 이상");
+  const translated = segments.map(seg => seg?.[0]).filter(Boolean).join("");
+  if(!translated) throw new Error("구글(비공식) 번역 결과 없음");
+  return translated;
+}
+
+async function tryLingva(chunk){
+  const target = "https://lingva.ml/api/v1/en/ko/" + encodeURIComponent(chunk);
+  const res = await fetch(MY_WORKER + "/?url=" + encodeURIComponent(target));
+  if(!res.ok) throw new Error("HTTP " + res.status);
+  const data = await res.json();
+  if(!data?.translation) throw new Error("Lingva 응답 형식 이상");
+  return data.translation;
+}
+
+async function tryGoogleDict(chunk){
+  const target = "https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=en&tl=ko&q=" + encodeURIComponent(chunk);
+  const res = await fetch(MY_WORKER + "/?url=" + encodeURIComponent(target));
+  if(!res.ok) throw new Error("HTTP " + res.status);
+  const data = await res.json();
+  // 이 엔드포인트는 응답 모양이 [["번역문", ...], ...] 또는 {sentences:[{trans:"..."}]} 등으로 다양해서 방어적으로 파싱
+  const translated = Array.isArray(data) ? data.flat(2).find(v => typeof v === "string")
+    : data?.sentences?.map(s => s.trans).join("");
+  if(!translated) throw new Error("구글 사전 API 응답 형식 이상");
+  return translated;
+}
+
+const TRANSLATE_PROVIDERS = [
+  { name: "MyMemory", fn: tryMyMemory },
+  { name: "구글(비공식)", fn: tryGoogleUnofficial },
+  { name: "Lingva", fn: tryLingva },
+  { name: "구글 사전 API", fn: tryGoogleDict },
+];
+
 async function translateToKo(text){
   if(!text) return "";
   if(translateCache[text]) return translateCache[text];
-  const chunk = text.slice(0, 480); // MyMemory 1회 요청 500byte 제한 대비
-  try{
-    const res = await fetch("https://api.mymemory.translated.net/get?q=" + encodeURIComponent(chunk) + "&langpair=en|ko");
-    const data = await res.json();
-    let translated = data?.responseData?.translatedText;
-    // MyMemory는 하루 무료 한도를 넘으면 에러 코드 대신 영어 경고문을 번역 결과인 것처럼 끼워 보낸다 — 감지해서 대체
-    if(translated && /MYMEMORY WARNING|LIMIT.*EXCEEDED|USED ALL AVAILABLE FREE TRANSLATIONS/i.test(translated)){
-      translated = "(무료번역 횟수초과)\n\n" + text;
+  const chunk = text.slice(0, 480); // 각 서비스 1회 요청 글자수 제한 대비
+
+  for(const provider of TRANSLATE_PROVIDERS){
+    try{
+      const translated = await provider.fn(chunk);
+      translateCache[text] = translated;
+      return translated;
+    }catch(e){
+      console.error(`[번역 · ${provider.name}] 실패, 다음 서비스로 대체 시도:`, e);
     }
-    if(translated){ translateCache[text] = translated; return translated; }
-  }catch(e){ /* 번역 실패 시 원문으로 대체 */ }
-  return text;
+  }
+  return "(무료번역 4곳 모두 실패)\n\n" + text;
 }
 
 async function fetchSource(source){
@@ -869,7 +925,7 @@ function render(){
 
       const renderPanel = (bodyText) => {
         if(myToken !== hoverToken) return; // 이미 다른 기사로 넘어간 경우 무시
-        currentPreviewData = { title: item.title, src: item.press || item.source, body: bodyText.replace(/<[^>]*>/g, "").replace(/^\(무료번역 횟수초과\)\s*/, "") };
+        currentPreviewData = { title: item.title, src: item.press || item.source, body: bodyText.replace(/<[^>]*>/g, "").replace(/^\((무료번역 횟수초과|무료번역 4곳 모두 실패)\)\s*/, "") };
         preview.innerHTML = `
           <div class="pv-header">
             <div class="pv-src">${item.source}${item.lang === "en" ? " · 번역됨" : ""}</div>
@@ -1225,6 +1281,14 @@ window.addEventListener("keydown", (e) => {
   if(e.key !== "Escape") return;
   if(window.__dismissPreviewViaEsc) window.__dismissPreviewViaEsc();
 });
+
+// ---- 커서가 탭+뉴스 목록 영역을 완전히 벗어나면 말풍선 자동으로 닫기 ----
+const contentArea = document.getElementById("contentArea");
+if(contentArea){
+  contentArea.addEventListener("mouseleave", () => {
+    if(window.__dismissPreviewViaEsc) window.__dismissPreviewViaEsc();
+  });
+}
 
 // ---- F5 새로고침에 5초 딜레이 적용 (버튼은 없앰) ----
 let lastLoadTime = 0;
