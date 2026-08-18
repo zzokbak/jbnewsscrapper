@@ -1062,7 +1062,7 @@ function renderQuoteSlot(name, price, pct, opts = {}){
   // toFixed(2)로 자리를 맞춘 뒤, parseFloat로 끝의 불필요한 0을 제거 (1.20 → 1.2, 1.00 → 1)
   const pctStr = (pct == null || isNaN(pct)) ? "" : sign + parseFloat(Math.abs(pct).toFixed(2)) + "%";
   const dot = opts.isFallback ? `<span class="mkt-dot">.</span>` : "";
-  const closedTag = opts.closed ? `<span class="mkt-dot">(종가)</span>` : "";
+  const closedTag = opts.closed ? `<span class="mkt-dot"></span>` : "";
   return `<span class="mkt">
     <span class="mkt-name">${name}</span>
     <span class="mkt-val">${valStr}</span>
