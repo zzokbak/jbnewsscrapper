@@ -1289,6 +1289,7 @@ async function updateAdrs(){
 
 function renderPlaceholders(){
   const items = [
+    `<div class="mkt-divider" style="margin-top:0; padding-top:0; border-top:none;">종합지수</div>`,
     `<span id="mkt-yh-0">${renderQuoteSlot(YAHOO_GROUP[0].name, null)}</span>`, // 코스피
     `<span id="mkt-yh-1">${renderQuoteSlot(YAHOO_GROUP[1].name, null)}</span>`, // 코스닥
     ...YAHOO_GROUP.slice(2, 6).map((m, i) => `<span id="mkt-yh-${i+2}">${renderQuoteSlot(m.name, null)}</span>`),
@@ -1308,20 +1309,23 @@ function renderPlaceholders(){
 
 renderPlaceholders();
 
-updateYahooGroup();
+// 최초 로딩 순서: 지수 → 환율 → ADR을 먼저 끝내고, 그 다음에 본문 뉴스(loadAll)를 시작
+// (그 이후의 반복 갱신은 서로 안 기다리고 각자 주기대로 돎)
+(async function initialMarketLoad(){
+  await updateYahooGroup();
+  await updateForex();
+  await updateAdrs();
+  updateMetals();
+  updateBitcoin();
+  loadAll();
+})();
+
 setInterval(updateYahooGroup, 30 * 1000); // Yahoo 그룹(지수·유가·알루미늄·천연가스): 30초마다 순차 조회
-
-updateMetals();
-setInterval(updateMetals, 10 * 1000); // 금·은·구리: 10초마다 (최대한 빠르게)
-
-updateForex();
-setInterval(updateForex, 10 * 1000); // 환율: 10초마다 (최대한 빠르게)
-
-updateBitcoin();
-setInterval(updateBitcoin, 15 * 1000); // 비트코인: 15초마다
-
-updateAdrs();
-setInterval(updateAdrs, 20 * 1000); // 국내 ADR: 20초마다 (환율이 먼저 준비된 뒤에 계산)
+setInterval(updateMetals, 10 * 1000);     // 금·은·구리: 10초마다 (최대한 빠르게)
+setInterval(updateForex, 10 * 1000);      // 환율: 10초마다 (최대한 빠르게)
+setInterval(updateBitcoin, 15 * 1000);    // 비트코인: 15초마다
+setInterval(updateAdrs, 20 * 1000);       // 국내 ADR: 20초마다 (환율이 먼저 준비된 뒤에 계산)
+setInterval(loadAll, REFRESH_MS);
 
 // ---- ESC 키로 미리보기 말풍선 닫기 ----
 window.addEventListener("keydown", (e) => {
@@ -1350,9 +1354,6 @@ window.addEventListener("keydown", (e) => {
   }
   loadAll();
 });
-
-loadAll();
-setInterval(loadAll, REFRESH_MS);
 </script>
 
 </body>
