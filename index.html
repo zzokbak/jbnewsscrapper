@@ -1062,7 +1062,7 @@ function renderQuoteSlot(name, price, pct, opts = {}){
   // toFixed(2)로 자리를 맞춘 뒤, parseFloat로 끝의 불필요한 0을 제거 (1.20 → 1.2, 1.00 → 1)
   const pctStr = (pct == null || isNaN(pct)) ? "" : sign + parseFloat(Math.abs(pct).toFixed(2)) + "%";
   const dot = opts.isFallback ? `<span class="mkt-dot">.</span>` : "";
-  const closedTag = opts.closed ? `<span class="mkt-dot"></span>` : "";
+  const closedTag = opts.closed ? `<span class="mkt-dot">(종가)</span>` : "";
   return `<span class="mkt">
     <span class="mkt-name">${name}</span>
     <span class="mkt-val">${valStr}</span>
@@ -1094,6 +1094,7 @@ const YAHOO_GROUP = [
   { name: "브렌트유", ysym: "BZ=F",  tdSym: "BRENT/USD",    isDollar: true, decimals: 0 },
   { name: "알미늄",   ysym: "ALI=F", tdSym: "ALUMINUM/USD", isDollar: true, decimals: 0 },
   { name: "천연gas",  ysym: "NG=F",  tdSym: "NATGAS/USD",   isDollar: true },
+  { name: "美30Y국채", ysym: "^TYX",  tdSym: "US30Y", divide10: true },
 ];
 
 async function fetchYahooQuote(ticker){
@@ -1278,7 +1279,9 @@ async function updateAdrs(){
       const { price, prevClose, marketState } = await fetchYahooQuote(m.ysym);
       const pct = ((price - prevClose) / prevClose) * 100;
       const krw = price * latestForexRate;
-      const isClosed = !marketState || marketState === "CLOSED";
+      // marketState가 확실히 "CLOSED"로 온 경우에만 종가 표시. 값이 비어있거나(불확실) PRE/REGULAR/POST/PREPRE/POSTPOST 등
+      // 실제 거래가 있을 수 있는 상태에서는 종가로 잘못 표시하지 않도록 함
+      const isClosed = marketState === "CLOSED";
       paintSlot(slotId, renderQuoteSlot(m.name, krw, pct, { isWon: true, decimals: 0, closed: isClosed }));
     }catch(e){
       console.error(`[국내 ADR · ${m.name}] 로딩 실패:`, e);
@@ -1295,6 +1298,7 @@ function renderPlaceholders(){
     ...YAHOO_GROUP.slice(2, 6).map((m, i) => `<span id="mkt-yh-${i+2}">${renderQuoteSlot(m.name, null)}</span>`),
     `<span id="mkt-forex">${renderQuoteSlot("환율", null)}</span>`,
     `<span id="mkt-yh-6">${renderQuoteSlot(YAHOO_GROUP[6].name, null)}</span>`,
+    `<span id="mkt-yh-11">${renderQuoteSlot(YAHOO_GROUP[11].name, null)}</span>`,
     `<span id="mkt-yh-7">${renderQuoteSlot(YAHOO_GROUP[7].name, null)}</span>`,
     `<span id="mkt-yh-8">${renderQuoteSlot(YAHOO_GROUP[8].name, null)}</span>`,
     ...METALS.map((m, i) => `<span id="mkt-metal-${i}">${renderQuoteSlot(m.name, null)}</span>`),
