@@ -1211,7 +1211,7 @@ async function updateBitcoin(){
 
 // ==== 환율: ① Yahoo Finance ② Frankfurter.app ③ Twelve Data 순으로 시도 ====
 let forexPrevRate = null;
-let latestForexRate = null; // 국내 ADR을 원화로 환산할 때 쓰는 최신 환율
+let latestForexRate = null; // 한국 ADR을 원화로 환산할 때 쓰는 최신 환율
 async function updateForex(){
   // 1순위: Yahoo Finance (KRW=X)
   try{
@@ -1255,7 +1255,7 @@ async function updateForex(){
 
 // ==== 초기 배치: 페이지 열리자마자 순서대로 이름부터 다 표시 (왼쪽 사이드바에 세로로 한 줄씩) ====
 // 순서: 코스피·코스닥·나스닥·나선·S&P·반도체·환율·美10Y·WTI·브렌트유·금·은·구리·알미늄·천연gas·bitcoin
-// ==== 국내 ADR (미국 상장 한국 기업 예탁증서) — 야후에서 달러가로 가져와 환율로 원화 환산 ====
+// ==== 한국 ADR (미국 상장 한국 기업 예탁증서) — 야후에서 달러가로 가져와 환율로 원화 환산 ====
 // 장이 열려있을 때(marketState !== "CLOSED")는 방금 갱신한 실시간 환율로 계산하고,
 // 장이 닫혀있어 가격이 그대로면 "(종가)" 표시를 붙임 — 다만 환율 자체는 계속 갱신되는 최신값을 씀
 // (정확한 "마감 시각의 환율"까지 과거로 되돌려 계산하는 건 무료로는 불가능해서, 현실적인 절충으로 최신 환율을 씁니다)
@@ -1268,6 +1268,7 @@ const ADR_LIST = [
   { name: "KT",       ysym: "KT" },
   { name: "한국전력", ysym: "KEP" },
   { name: "LG디스플", ysym: "LPL" },
+  { name: "그래비티", ysym: "GRVY" },
 ];
 
 async function updateAdrs(){
@@ -1284,7 +1285,7 @@ async function updateAdrs(){
       const isClosed = marketState === "CLOSED";
       paintSlot(slotId, renderQuoteSlot(m.name, krw, pct, { isWon: true, decimals: 0, closed: isClosed }));
     }catch(e){
-      console.error(`[국내 ADR · ${m.name}] 로딩 실패:`, e);
+      console.error(`[한국 ADR · ${m.name}] 로딩 실패:`, e);
     }
     if(i < ADR_LIST.length - 1) await delay(200);
   }
@@ -1305,7 +1306,7 @@ function renderPlaceholders(){
     `<span id="mkt-yh-9">${renderQuoteSlot(YAHOO_GROUP[9].name, null)}</span>`,
     `<span id="mkt-yh-10">${renderQuoteSlot(YAHOO_GROUP[10].name, null)}</span>`,
     `<span id="mkt-btc">${renderQuoteSlot("Bitcoin", null)}</span>`,
-    `<div class="mkt-divider">국내 ADR</div>`,
+    `<div class="mkt-divider">한국 ADR</div>`,
     ...ADR_LIST.map((m, i) => `<span id="mkt-adr-${i}">${renderQuoteSlot(m.name, null)}</span>`),
   ];
   document.getElementById("marketSidebar").innerHTML = items.join("");
@@ -1328,7 +1329,7 @@ setInterval(updateYahooGroup, 30 * 1000); // Yahoo 그룹(지수·유가·알루
 setInterval(updateMetals, 10 * 1000);     // 금·은·구리: 10초마다 (최대한 빠르게)
 setInterval(updateForex, 10 * 1000);      // 환율: 10초마다 (최대한 빠르게)
 setInterval(updateBitcoin, 15 * 1000);    // 비트코인: 15초마다
-setInterval(updateAdrs, 20 * 1000);       // 국내 ADR: 20초마다 (환율이 먼저 준비된 뒤에 계산)
+setInterval(updateAdrs, 20 * 1000);       // 한국 ADR: 20초마다 (환율이 먼저 준비된 뒤에 계산)
 setInterval(loadAll, REFRESH_MS);
 
 // ---- ESC 키로 미리보기 말풍선 닫기 ----
