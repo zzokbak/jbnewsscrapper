@@ -21,13 +21,13 @@
   body{
     margin:0; background:var(--bg); color:var(--ink);
     font-family:'IBM Plex Mono', monospace;
-    padding-left:184px; /* 왼쪽 시장지표 사이드바 자리 확보 (160px 기준 한글 2자 여유) */
+    padding-left:172px; /* 왼쪽 시장지표 사이드바 자리 확보 (한 글자 정도 축소) */
   }
   h1,h2,.serif{font-family:'Noto Serif KR', serif;}
 
   /* ---- 왼쪽 고정 시장지표 사이드바 (세로 방향, 항목 간 간격 최소) ---- */
   #marketSidebar{
-    position:fixed; left:0; top:0; bottom:0; width:184px;
+    position:fixed; left:0; top:0; bottom:0; width:172px;
     background:var(--panel); border-right:1px solid var(--line);
     overflow-y:auto; overflow-x:hidden; padding:10px 8px;
     display:flex; flex-direction:column; gap:1px;
@@ -40,8 +40,8 @@
     margin:8px 0 3px; padding-top:8px; border-top:1px solid var(--line);
   }
   @media (max-width:480px){
-    body{ padding-left:132px; }
-    #marketSidebar{ width:132px; padding:8px 5px; }
+    body{ padding-left:123px; }
+    #marketSidebar{ width:123px; padding:8px 5px; }
     #marketSidebar .mkt{ font-size:9.5px !important; }
   }
 
@@ -853,7 +853,7 @@ function render(){
   }
 
   // "한경 프리미엄" 유료 기사는 링크복사 버튼 왼쪽에 작은 보라색 "유료" 배지로 표시 (클릭 기능 없음, 단순 문자열 검사라 가벼움)
-  const PREMIUM_RE = /한경\s?프리미엄/;
+  const PREMIUM_RE = /한(국경제|경)\s?프리미엄/;
   function isHankyungPremium(i){
     return i.source === "한국경제" && (PREMIUM_RE.test(i.title) || PREMIUM_RE.test(i.description || ""));
   }
