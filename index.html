@@ -21,13 +21,13 @@
   body{
     margin:0; background:var(--bg); color:var(--ink);
     font-family:'IBM Plex Mono', monospace;
-    padding-left:172px; /* 왼쪽 시장지표 사이드바 자리 확보 (한 글자 정도 축소) */
+    padding-left:165px; /* 왼쪽 시장지표 사이드바 자리 확보 (영문 한글자 정도 축소) */
   }
   h1,h2,.serif{font-family:'Noto Serif KR', serif;}
 
   /* ---- 왼쪽 고정 시장지표 사이드바 (세로 방향, 항목 간 간격 최소) ---- */
   #marketSidebar{
-    position:fixed; left:0; top:0; bottom:0; width:172px;
+    position:fixed; left:0; top:0; bottom:0; width:165px;
     background:var(--panel); border-right:1px solid var(--line);
     overflow-y:auto; overflow-x:hidden; padding:10px 8px;
     display:flex; flex-direction:column; gap:1px;
@@ -40,8 +40,8 @@
     margin:8px 0 3px; padding-top:8px; border-top:1px solid var(--line);
   }
   @media (max-width:480px){
-    body{ padding-left:123px; }
-    #marketSidebar{ width:123px; padding:8px 5px; }
+    body{ padding-left:118px; }
+    #marketSidebar{ width:118px; padding:8px 5px; }
     #marketSidebar .mkt{ font-size:9.5px !important; }
   }
 
@@ -420,6 +420,8 @@ const NOISE_AND_GROUPS = [
   ["거래","방법"],
   ["계좌","가입"],
   ["알레르기","식품의약처"],
+  ["이재명","교수"],
+  ["이재명","강사"],
 ];
 
 function isExcludedNoise(item){
@@ -450,6 +452,14 @@ function isExcludedNoise(item){
   // 상속·친자·유언 중 2개 이상이 같이 나오면 (유산 분쟁 등 법조 기사) 제외
   const inheritanceHits = ["상속","친자","유언"].filter(k => combined.includes(k)).length;
   if(inheritanceHits >= 2) return true;
+
+  // "미국"+"학교"+"법안" 조합은 대부분 증시와 무관한 미국 국내 교육 법안 기사라 제외.
+  // 단, 금융/주식/경제 맥락이 같이 있으면(예: 학자금 대출 시장, 교육 관련주 등) 통과시킴
+  if(combined.includes("미국") && combined.includes("학교") && combined.includes("법안")){
+    const hasFinanceContext = combined.includes("금융") || combined.includes("주식") || combined.includes("경제") ||
+      STRONG_MARKET_KEYWORDS.some(k => combinedLower.includes(k.toLowerCase())) || hasMarketContext(combined);
+    if(!hasFinanceContext) return true;
+  }
 
   // "중국" 일반 뉴스는 제외하되, CXMT·창신메모리 관련 기사는 예외적으로 허용
   const isChinaMemoryException = /cxmt/i.test(combined) || /창신\s?메모리/.test(combined);
@@ -1089,12 +1099,13 @@ const YAHOO_GROUP = [
   { name: "나선",     ysym: "NQ=F",  tdSym: "NQ",   decimals: 0 },
   { name: "S&P",     ysym: "^GSPC", tdSym: "SPX",  decimals: 0 },
   { name: "반도체",   ysym: "^SOX",  tdSym: "SOX",  decimals: 0 },
-  { name: "美10Y국채", ysym: "^TNX",  tdSym: "US10Y", divide10: true },
+  { name: "美10Y국채", ysym: "^TNX",  tdSym: "US10Y" },
   { name: "WTI",     ysym: "CL=F",  tdSym: "WTI/USD",      isDollar: true, decimals: 0 },
   { name: "브렌트유", ysym: "BZ=F",  tdSym: "BRENT/USD",    isDollar: true, decimals: 0 },
   { name: "알미늄",   ysym: "ALI=F", tdSym: "ALUMINUM/USD", isDollar: true, decimals: 0 },
   { name: "천연gas",  ysym: "NG=F",  tdSym: "NATGAS/USD",   isDollar: true },
-  { name: "美30Y국채", ysym: "^TYX",  tdSym: "US30Y", divide10: true },
+  { name: "美30Y국채", ysym: "^TYX",  tdSym: "US30Y" },
+  { name: "Dow지수",   ysym: "^DJI",  tdSym: "DJI",  decimals: 0 },
 ];
 
 async function fetchYahooQuote(ticker){
@@ -1296,7 +1307,9 @@ function renderPlaceholders(){
     `<div class="mkt-divider" style="margin-top:0; padding-top:0; border-top:none;">종합지수</div>`,
     `<span id="mkt-yh-0">${renderQuoteSlot(YAHOO_GROUP[0].name, null)}</span>`, // 코스피
     `<span id="mkt-yh-1">${renderQuoteSlot(YAHOO_GROUP[1].name, null)}</span>`, // 코스닥
-    ...YAHOO_GROUP.slice(2, 6).map((m, i) => `<span id="mkt-yh-${i+2}">${renderQuoteSlot(m.name, null)}</span>`),
+    ...YAHOO_GROUP.slice(2, 4).map((m, i) => `<span id="mkt-yh-${i+2}">${renderQuoteSlot(m.name, null)}</span>`),
+    `<span id="mkt-yh-12">${renderQuoteSlot(YAHOO_GROUP[12].name, null)}</span>`,
+    ...YAHOO_GROUP.slice(4, 6).map((m, i) => `<span id="mkt-yh-${i+4}">${renderQuoteSlot(m.name, null)}</span>`),
     `<span id="mkt-forex">${renderQuoteSlot("환율", null)}</span>`,
     `<span id="mkt-yh-6">${renderQuoteSlot(YAHOO_GROUP[6].name, null)}</span>`,
     `<span id="mkt-yh-11">${renderQuoteSlot(YAHOO_GROUP[11].name, null)}</span>`,
@@ -1338,10 +1351,22 @@ window.addEventListener("keydown", (e) => {
   if(window.__dismissPreviewViaEsc) window.__dismissPreviewViaEsc();
 });
 
-// ---- 커서가 탭+뉴스 목록 영역을 완전히 벗어나면 말풍선 자동으로 닫기 ----
+// ---- 커서가 탭+뉴스 목록 영역과 말풍선을 둘 다 벗어나면 말풍선 자동으로 닫기 ----
+// (제목에서 말풍선으로 커서를 옮기는 중간에는 안 닫혀야 복사/닫기 버튼을 누를 수 있음)
 const contentArea = document.getElementById("contentArea");
-if(contentArea){
-  contentArea.addEventListener("mouseleave", () => {
+const previewPanelEl = document.getElementById("previewPanel");
+
+function isMovingIntoZone(e, zoneEl){
+  return zoneEl && e.relatedTarget && zoneEl.contains(e.relatedTarget);
+}
+
+if(contentArea && previewPanelEl){
+  contentArea.addEventListener("mouseleave", (e) => {
+    if(isMovingIntoZone(e, previewPanelEl)) return; // 말풍선 쪽으로 이동 중이면 유지
+    if(window.__dismissPreviewViaEsc) window.__dismissPreviewViaEsc();
+  });
+  previewPanelEl.addEventListener("mouseleave", (e) => {
+    if(isMovingIntoZone(e, contentArea)) return; // 다시 목록 쪽으로 이동 중이면 유지
     if(window.__dismissPreviewViaEsc) window.__dismissPreviewViaEsc();
   });
 }
