@@ -21,13 +21,13 @@
   body{
     margin:0; background:var(--bg); color:var(--ink);
     font-family:'IBM Plex Mono', monospace;
-    padding-left:165px; /* 왼쪽 시장지표 사이드바 자리 확보 (영문 한글자 정도 축소) */
+    padding-left:177px; /* 왼쪽 시장지표 사이드바 자리 확보 (한글 한 글자 정도 확장) */
   }
   h1,h2,.serif{font-family:'Noto Serif KR', serif;}
 
   /* ---- 왼쪽 고정 시장지표 사이드바 (세로 방향, 항목 간 간격 최소) ---- */
   #marketSidebar{
-    position:fixed; left:0; top:0; bottom:0; width:165px;
+    position:fixed; left:0; top:0; bottom:0; width:177px;
     background:var(--panel); border-right:1px solid var(--line);
     overflow-y:auto; overflow-x:hidden; padding:10px 8px;
     display:flex; flex-direction:column; gap:1px;
@@ -40,8 +40,8 @@
     margin:8px 0 3px; padding-top:8px; border-top:1px solid var(--line);
   }
   @media (max-width:480px){
-    body{ padding-left:118px; }
-    #marketSidebar{ width:118px; padding:8px 5px; }
+    body{ padding-left:126px; }
+    #marketSidebar{ width:126px; padding:8px 5px; }
     #marketSidebar .mkt{ font-size:9.5px !important; }
   }
 
