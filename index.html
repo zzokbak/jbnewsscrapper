@@ -294,9 +294,9 @@ const KEYWORDS_EN = ["Samsung","SK Hynix","Hynix","earnings","rebalancing","stoc
 const USE_PORTAL_SEARCH = true;
 
 const REFRESH_MS = 5 * 60 * 1000; // 5분 (3명이 각자 브라우저를 켜두는 걸 감안해 네이버 무료 한도의 약 60%만 쓰도록 여유있게 설정)
-const MAX_ITEMS = 160;
-const PER_SOURCE_MAX = 20; // 탭(언론사)마다 최대 20개까지만
-const PER_SOURCE_MAX_OVERRIDES = { "Bloomberg": 10 }; // 특정 언론사만 다르게 제한하고 싶을 때
+const MAX_ITEMS = 300;
+const PER_SOURCE_MAX = 40; // 탭(언론사)마다 최대 40개까지만 (급증 시 밀려나는 문제 완화)
+const PER_SOURCE_MAX_OVERRIDES = { "Bloomberg": 15 }; // 특정 언론사만 다르게 제한하고 싶을 때
 function getSourceMax(name){ return PER_SOURCE_MAX_OVERRIDES[name] || PER_SOURCE_MAX; }
 
 // 1순위: 본인 소유의 Cloudflare Worker 프록시
@@ -409,7 +409,8 @@ const NOISE_SINGLE_TERMS = [
   "인턴 기자","인턴기자","오피니언","기자수첩","[기고]",
   "한부모가정","문화체험","초보",
   "공주","왕자","여왕","국왕","황제","왕실","국빈","정상회담",
-  "가요",
+  "가요","건강산책","연예","연예최신","영화","드라마","해외연예","스타",
+  "오늘의 증시","외부칼럼","청년 대상",
 ];
 
 // 두 단어가 같이 있어야 제외되는 조합
@@ -422,6 +423,8 @@ const NOISE_AND_GROUPS = [
   ["알레르기","식품의약처"],
   ["이재명","교수"],
   ["이재명","강사"],
+  ["주식","쌀"],
+  ["연찬회","참석"],
 ];
 
 function isExcludedNoise(item){
